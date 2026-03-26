@@ -1,0 +1,33 @@
+# depslib dependency file v1.0
+1773028575 source:c:\laptrinh c1\aes_project\src\main.c
+	<stdio.h>
+	"aes.h"
+	<time.h>
+
+1773028601 c:\laptrinh c1\aes_project\include\aes.h
+
+1773029385 source:c:\laptrinh c1\aes_project\src\aes.c
+	<stdio.h>
+	"aes.h"
+	"aes_tables.h"
+
+1773028508 c:\laptrinh c1\aes_project\include\aes_tables.h
+
+1773004184 source:d:\aes_project\src\aes.c
+	<stdio.h>
+	"aes.h"
+	"aes_tables.h"
+
+1774364675 d:\aes_project\include\aes.h
+
+1774364661 d:\aes_project\include\aes_tables.h
+
+1774364758 source:d:\aes_project\src\main.c
+	<stdio.h>
+	"aes.h"
+	<time.h>
+	<string.h>
+
+1774364667 source:d:\aes_project\include\aes_tables.c
+	"aes_tables.h"
+
