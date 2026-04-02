@@ -9,6 +9,7 @@
 /* ======================== CONSTANTS ======================== */
 #define WIN_WIDTH   820
 #define WIN_HEIGHT  720
+#define ID_COMBO_AES 1012
 
 #define ID_BTN_BROWSE    1001
 #define ID_BTN_ENCRYPT   1002
@@ -41,18 +42,22 @@ static HWND hBtnBrowse, hBtnEncrypt, hBtnDecrypt, hBtnRandom;
 static HWND hStaticTimeEnc, hStaticTimeDec, hStaticStatus;
 static HWND hLabelKey, hLabelFile, hLabelOriginal, hLabelResult;
 static HWND hTitle;
+static HWND hComboAES;
 
 static HBRUSH hBrBg, hBrSurface, hBrInput;
 static HFONT hFontTitle, hFontLabel, hFontNormal, hFontMono, hFontBtn;
+
 
 static char g_inputPath[MAX_PATH] = {0};
 static char g_encPath[MAX_PATH]   = {0};
 static char g_decPath[MAX_PATH]   = {0};
 
+static int get_key_size(void);
+
 /* ======================== HEX HELPERS ======================== */
-static void hex_to_bytes(const char *hex, unsigned char *bytes)
+static void hex_to_bytes(const char *hex, unsigned char *bytes, int keySize)
 {
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < keySize; i++)
         sscanf(hex + 2 * i, "%2hhx", &bytes[i]);
 }
 
@@ -79,13 +84,18 @@ static void build_output_paths(const char *inputPath)
 }
 
 /* ================== ENCRYPT FILE ================== */
-static int encrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int encrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
     FILE *fin = fopen(inputFile, "rb");
     if (!fin) return -1;
 
     FILE *fout = fopen(outputFile, "wb");
-    if (!fout) { fclose(fin); return -2; }
+    if (!fout)
+    {
+        fclose(fin);
+        return -2;
+    }
 
     unsigned char buffer[16], encrypted[16];
     int bytesRead;
@@ -98,7 +108,7 @@ static int encrypt_file(const char *inputFile, const char *outputFile, unsigned 
             for (int i = bytesRead; i < 16; i++)
                 buffer[i] = pad;
         }
-        AES_encrypt(buffer, encrypted, key);
+        AES_encrypt(buffer, encrypted, key, keySize);;
         fwrite(encrypted, 1, 16, fout);
     }
 
@@ -108,20 +118,25 @@ static int encrypt_file(const char *inputFile, const char *outputFile, unsigned 
 }
 
 /* ================== DECRYPT FILE ================== */
-static int decrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int decrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
     FILE *fin = fopen(inputFile, "rb");
     if (!fin) return -1;
 
     FILE *fout = fopen(outputFile, "wb");
-    if (!fout) { fclose(fin); return -2; }
+    if (!fout)
+    {
+        fclose(fin);
+        return -2;
+    }
 
     unsigned char buffer[16], decrypted[16], prev[16];
     int first = 1;
 
     while (fread(buffer, 1, 16, fin) == 16)
     {
-        AES_decrypt(buffer, decrypted, key);
+        AES_decrypt(buffer, decrypted, key,keySize);
         if (!first)
             fwrite(prev, 1, 16, fout);
         memcpy(prev, decrypted, 16);
@@ -154,7 +169,11 @@ static char *read_file_text(const char *path, long *outLen)
     /* Limit display to 4KB */
     long readLen = (len > 4096) ? 4096 : len;
     char *buf = (char *)malloc(readLen + 64);
-    if (!buf) { fclose(f); return NULL; }
+    if (!buf)
+    {
+        fclose(f);
+        return NULL;
+    }
 
     fread(buf, 1, readLen, f);
     fclose(f);
@@ -184,13 +203,21 @@ static char *read_file_hex(const char *path)
 
     long readLen = (len > 1024) ? 1024 : len;
     unsigned char *raw = (unsigned char *)malloc(readLen);
-    if (!raw) { fclose(f); return NULL; }
+    if (!raw)
+    {
+        fclose(f);
+        return NULL;
+    }
     fread(raw, 1, readLen, f);
     fclose(f);
 
     /* Each byte -> "XX " (3 chars) + line breaks every 48 chars */
     char *hex = (char *)malloc(readLen * 4 + 256);
-    if (!hex) { free(raw); return NULL; }
+    if (!hex)
+    {
+        free(raw);
+        return NULL;
+    }
 
     int pos = 0;
     for (long i = 0; i < readLen; i++)
@@ -212,36 +239,40 @@ static char *read_file_hex(const char *path)
 static void generate_random_key(char *hexOut)
 {
     srand((unsigned)time(NULL) ^ (unsigned)GetTickCount());
-    for (int i = 0; i < 16; i++)
+
+    int keySize = get_key_size();   // 🔥 lấy loại AES (16 / 24 / 32)
+
+    for (int i = 0; i < keySize; i++)
     {
         unsigned char b = (unsigned char)(rand() & 0xFF);
         sprintf(hexOut + i * 2, "%02X", b);
     }
-    hexOut[32] = '\0';
+
+    hexOut[keySize * 2] = '\0'; // 🔥 kết thúc chuỗi đúng độ dài
 }
 
 /* ================== CREATE FONTS ================== */
 static void create_fonts(void)
 {
     hFontTitle = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+                            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 
     hFontLabel = CreateFont(16, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+                            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 
     hFontNormal = CreateFont(15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 
     hFontMono = CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                           CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
 
     hFontBtn = CreateFont(15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+                          DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                          CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 }
 
 /* ================== CUSTOM BUTTON DRAW ================== */
@@ -250,19 +281,35 @@ static void draw_button(LPDRAWITEMSTRUCT dis)
     COLORREF bgColor, textColor;
     int id = dis->CtlID;
 
-    if (id == ID_BTN_ENCRYPT)      { bgColor = CLR_ACCENT;  textColor = RGB(30,30,46); }
-    else if (id == ID_BTN_DECRYPT) { bgColor = CLR_ACCENT2; textColor = RGB(30,30,46); }
-    else if (id == ID_BTN_RANDOM)  { bgColor = CLR_ACCENT3; textColor = RGB(30,30,46); }
-    else                           { bgColor = CLR_SURFACE;  textColor = CLR_TEXT; }
+    if (id == ID_BTN_ENCRYPT)
+    {
+        bgColor = CLR_ACCENT;
+        textColor = RGB(30,30,46);
+    }
+    else if (id == ID_BTN_DECRYPT)
+    {
+        bgColor = CLR_ACCENT2;
+        textColor = RGB(30,30,46);
+    }
+    else if (id == ID_BTN_RANDOM)
+    {
+        bgColor = CLR_ACCENT3;
+        textColor = RGB(30,30,46);
+    }
+    else
+    {
+        bgColor = CLR_SURFACE;
+        textColor = CLR_TEXT;
+    }
 
     /* Hover effect */
     if (dis->itemState & ODS_SELECTED)
     {
         bgColor = RGB(
-            GetRValue(bgColor) * 80 / 100,
-            GetGValue(bgColor) * 80 / 100,
-            GetBValue(bgColor) * 80 / 100
-        );
+                      GetRValue(bgColor) * 80 / 100,
+                      GetGValue(bgColor) * 80 / 100,
+                      GetBValue(bgColor) * 80 / 100
+                  );
     }
 
     /* Draw rounded rect */
@@ -318,71 +365,71 @@ static void create_controls(HWND hwnd)
 
     /* Title */
     hTitle = CreateWindow("STATIC",
-        "  AES-128  Encryption / Decryption",
-        WS_CHILD | WS_VISIBLE | SS_CENTER,
-        leftMargin, y, contentW, 36,
-        hwnd, NULL, NULL, NULL);
+                          "  AES-128  Encryption / Decryption",
+                          WS_CHILD | WS_VISIBLE | SS_CENTER,
+                          leftMargin, y, contentW, 36,
+                          hwnd, NULL, NULL, NULL);
     SendMessage(hTitle, WM_SETFONT, (WPARAM)hFontTitle, TRUE);
     y += 50;
 
     /* Key label */
     hLabelKey = CreateWindow("STATIC", "AES Key (32 hex characters):",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, 250, 20,
-        hwnd, NULL, NULL, NULL);
+                             WS_CHILD | WS_VISIBLE,
+                             leftMargin, y, 250, 20,
+                             hwnd, NULL, NULL, NULL);
     SendMessage(hLabelKey, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
     y += 24;
 
     /* Key input */
     hEditKey = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
-        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_UPPERCASE,
-        leftMargin, y, contentW - 120, 30,
-        hwnd, (HMENU)ID_EDIT_KEY, NULL, NULL);
+                              WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_UPPERCASE,
+                              leftMargin, y, contentW - 120, 30,
+                              hwnd, (HMENU)ID_EDIT_KEY, NULL, NULL);
     SendMessage(hEditKey, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     SendMessage(hEditKey, EM_SETLIMITTEXT, 32, 0);
 
     /* Random button */
     hBtnRandom = CreateWindow("BUTTON", "Random Key",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        leftMargin + contentW - 110, y, 110, 30,
-        hwnd, (HMENU)ID_BTN_RANDOM, NULL, NULL);
+                              WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                              leftMargin + contentW - 110, y, 110, 30,
+                              hwnd, (HMENU)ID_BTN_RANDOM, NULL, NULL);
     y += 44;
 
     /* File label */
     hLabelFile = CreateWindow("STATIC", "Input File:",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, 100, 20,
-        hwnd, NULL, NULL, NULL);
+                              WS_CHILD | WS_VISIBLE,
+                              leftMargin, y, 100, 20,
+                              hwnd, NULL, NULL, NULL);
     SendMessage(hLabelFile, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
     y += 24;
 
     /* File path input */
     hEditFilePath = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
-        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
-        leftMargin, y, contentW - 120, 30,
-        hwnd, (HMENU)ID_EDIT_FILEPATH, NULL, NULL);
+                                   WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
+                                   leftMargin, y, contentW - 120, 30,
+                                   hwnd, (HMENU)ID_EDIT_FILEPATH, NULL, NULL);
     SendMessage(hEditFilePath, WM_SETFONT, (WPARAM)hFontNormal, TRUE);
 
     /* Browse button */
     hBtnBrowse = CreateWindow("BUTTON", "Browse...",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        leftMargin + contentW - 110, y, 110, 30,
-        hwnd, (HMENU)ID_BTN_BROWSE, NULL, NULL);
+                              WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                              leftMargin + contentW - 110, y, 110, 30,
+                              hwnd, (HMENU)ID_BTN_BROWSE, NULL, NULL);
     y += 44;
 
     /* Original content label */
     hLabelOriginal = CreateWindow("STATIC", "Original Content:",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, 200, 20,
-        hwnd, NULL, NULL, NULL);
+                                  WS_CHILD | WS_VISIBLE,
+                                  leftMargin, y, 200, 20,
+                                  hwnd, NULL, NULL, NULL);
     SendMessage(hLabelOriginal, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
     y += 22;
 
     /* Original content textbox */
     hEditOriginal = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
-        WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        leftMargin, y, contentW, 100,
-        hwnd, (HMENU)ID_EDIT_ORIGINAL, NULL, NULL);
+                                   WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+                                   leftMargin, y, contentW, 100,
+                                   hwnd, (HMENU)ID_EDIT_ORIGINAL, NULL, NULL);
     SendMessage(hEditOriginal, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     y += 110;
 
@@ -393,52 +440,72 @@ static void create_controls(HWND hwnd)
     int btnX = (WIN_WIDTH - totalBtnW) / 2;
 
     hBtnEncrypt = CreateWindow("BUTTON", "ENCRYPT",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        btnX, y, btnW, 42,
-        hwnd, (HMENU)ID_BTN_ENCRYPT, NULL, NULL);
+                               WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                               btnX, y, btnW, 42,
+                               hwnd, (HMENU)ID_BTN_ENCRYPT, NULL, NULL);
 
     hBtnDecrypt = CreateWindow("BUTTON", "DECRYPT",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        btnX + btnW + gap, y, btnW, 42,
-        hwnd, (HMENU)ID_BTN_DECRYPT, NULL, NULL);
+                               WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                               btnX + btnW + gap, y, btnW, 42,
+                               hwnd, (HMENU)ID_BTN_DECRYPT, NULL, NULL);
     y += 56;
 
     /* Result label */
     hLabelResult = CreateWindow("STATIC", "Result:",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, 200, 20,
-        hwnd, NULL, NULL, NULL);
+                                WS_CHILD | WS_VISIBLE,
+                                leftMargin, y, 200, 20,
+                                hwnd, NULL, NULL, NULL);
     SendMessage(hLabelResult, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
     y += 22;
 
     /* Result textbox */
     hEditResult = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
-        WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        leftMargin, y, contentW, 100,
-        hwnd, (HMENU)ID_EDIT_RESULT, NULL, NULL);
+                                 WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+                                 leftMargin, y, contentW, 100,
+                                 hwnd, (HMENU)ID_EDIT_RESULT, NULL, NULL);
     SendMessage(hEditResult, WM_SETFONT, (WPARAM)hFontMono, TRUE);
     y += 110;
 
     /* Time labels */
     hStaticTimeEnc = CreateWindow("STATIC", "Encryption time:  --",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, contentW / 2, 22,
-        hwnd, (HMENU)ID_STATIC_TIME_ENC, NULL, NULL);
+                                  WS_CHILD | WS_VISIBLE,
+                                  leftMargin, y, contentW / 2, 22,
+                                  hwnd, (HMENU)ID_STATIC_TIME_ENC, NULL, NULL);
     SendMessage(hStaticTimeEnc, WM_SETFONT, (WPARAM)hFontNormal, TRUE);
 
     hStaticTimeDec = CreateWindow("STATIC", "Decryption time:  --",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin + contentW / 2, y, contentW / 2, 22,
-        hwnd, (HMENU)ID_STATIC_TIME_DEC, NULL, NULL);
+                                  WS_CHILD | WS_VISIBLE,
+                                  leftMargin + contentW / 2, y, contentW / 2, 22,
+                                  hwnd, (HMENU)ID_STATIC_TIME_DEC, NULL, NULL);
     SendMessage(hStaticTimeDec, WM_SETFONT, (WPARAM)hFontNormal, TRUE);
     y += 30;
 
     /* Status */
     hStaticStatus = CreateWindow("STATIC", "Status: Ready",
-        WS_CHILD | WS_VISIBLE,
-        leftMargin, y, contentW, 22,
-        hwnd, (HMENU)ID_STATIC_STATUS, NULL, NULL);
+                                 WS_CHILD | WS_VISIBLE,
+                                 leftMargin, y, contentW, 22,
+                                 hwnd, (HMENU)ID_STATIC_STATUS, NULL, NULL);
     SendMessage(hStaticStatus, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
+
+    hComboAES = CreateWindow("COMBOBOX", "",
+                             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+                             leftMargin, y, 200, 200,
+                             hwnd, (HMENU)ID_COMBO_AES, NULL, NULL);
+
+    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-128");
+    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-192");
+    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-256");
+
+    SendMessage(hComboAES, CB_SETCURSEL, 0, 0);
+    y += 40;
+}
+
+static int get_key_size(void)
+{
+    int sel = SendMessage(hComboAES, CB_GETCURSEL, 0, 0);
+    if (sel == 0) return 16;
+    if (sel == 1) return 24;
+    return 32;
 }
 
 /* ================== BROWSE FILE ================== */
@@ -481,25 +548,20 @@ static void do_browse(HWND hwnd)
 }
 
 /* ================== GET KEY ================== */
-static int get_key(unsigned char key[16])
+static int get_key(unsigned char *key, int keySize)
 {
-    char hexKey[64] = {0};
+    char hexKey[128] = {0};
     GetWindowText(hEditKey, hexKey, sizeof(hexKey));
 
-    if (strlen(hexKey) != 32)
+    int expectedLen = keySize * 2;
+
+    if (strlen(hexKey) != expectedLen)
         return -1;
 
-    /* Validate hex */
-    for (int i = 0; i < 32; i++)
-    {
-        char c = hexKey[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
-            return -1;
-    }
-
-    hex_to_bytes(hexKey, key);
+    hex_to_bytes(hexKey, key, keySize);
     return 0;
 }
+
 
 /* ================== DO ENCRYPT ================== */
 static void do_encrypt(HWND hwnd)
@@ -510,19 +572,29 @@ static void do_encrypt(HWND hwnd)
         return;
     }
 
-    unsigned char key[16];
-    if (get_key(key) != 0)
+    int keySize = get_key_size();
+    unsigned char key[32];
+
+    if (get_key(key, keySize) != 0)
     {
-        MessageBox(hwnd, "Invalid key! Please enter exactly 32 hex characters (0-9, A-F).", "Error", MB_ICONWARNING);
+        char err[100];
+        sprintf(err, "Invalid key! Please enter exactly %d hex characters.", keySize * 2);
+        MessageBox(hwnd, err, "Error", MB_ICONWARNING);
         return;
     }
 
     SetWindowText(hStaticStatus, "Status: Encrypting...");
     UpdateWindow(hwnd);
 
-    clock_t start = clock();
-    int result = encrypt_file(g_inputPath, g_encPath, key);
-    clock_t end = clock();
+    /* ===== ĐO THỜI GIAN CHUẨN ===== */
+    LARGE_INTEGER freq, start, end;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
+
+    int result = encrypt_file(g_inputPath, g_encPath, key, keySize);
+
+    QueryPerformanceCounter(&end);
+    /* ============================== */
 
     if (result != 0)
     {
@@ -531,9 +603,10 @@ static void do_encrypt(HWND hwnd)
         return;
     }
 
-    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
+    double elapsed = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+
     char timeStr[128];
-    sprintf(timeStr, "Encryption time:  %.6f s", elapsed);
+    sprintf(timeStr, "Encryption time: %.6f s (%.3f ms)", elapsed, elapsed * 1000);
     SetWindowText(hStaticTimeEnc, timeStr);
 
     /* Show encrypted content as hex */
@@ -561,14 +634,17 @@ static void do_decrypt(HWND hwnd)
         return;
     }
 
-    unsigned char key[16];
-    if (get_key(key) != 0)
+    int keySize = get_key_size();
+    unsigned char key[32];
+
+    if (get_key(key, keySize) != 0)
     {
-        MessageBox(hwnd, "Invalid key! Please enter exactly 32 hex characters (0-9, A-F).", "Error", MB_ICONWARNING);
+        char err[100];
+        sprintf(err, "Invalid key! Please enter exactly %d hex characters.", keySize * 2);
+        MessageBox(hwnd, err, "Error", MB_ICONWARNING);
         return;
     }
 
-    /* Check if encrypted file exists */
     FILE *test = fopen(g_encPath, "rb");
     if (!test)
     {
@@ -580,9 +656,15 @@ static void do_decrypt(HWND hwnd)
     SetWindowText(hStaticStatus, "Status: Decrypting...");
     UpdateWindow(hwnd);
 
-    clock_t start = clock();
-    int result = decrypt_file(g_encPath, g_decPath, key);
-    clock_t end = clock();
+    /* ===== ĐO THỜI GIAN CHUẨN ===== */
+    LARGE_INTEGER freq, start, end;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
+
+    int result = decrypt_file(g_encPath, g_decPath, key, keySize);
+
+    QueryPerformanceCounter(&end);
+    /* ============================== */
 
     if (result != 0)
     {
@@ -591,9 +673,10 @@ static void do_decrypt(HWND hwnd)
         return;
     }
 
-    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
+    double elapsed = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+
     char timeStr[128];
-    sprintf(timeStr, "Decryption time:  %.6f s", elapsed);
+    sprintf(timeStr, "Decryption time: %.6f s (%.3f ms)", elapsed, elapsed * 1000);
     SetWindowText(hStaticTimeDec, timeStr);
 
     /* Show decrypted content */
@@ -612,7 +695,6 @@ static void do_decrypt(HWND hwnd)
     sprintf(statusMsg, "Status: Decryption completed! Output -> %s", g_decPath);
     SetWindowText(hStaticStatus, statusMsg);
 }
-
 /* ================== WINDOW PROCEDURE ================== */
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -722,7 +804,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 /* ================== WINMAIN ================== */
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 {
-    (void)hPrev; (void)lpCmd;
+    (void)hPrev;
+    (void)lpCmd;
 
     WNDCLASSEX wc = {0};
     wc.cbSize        = sizeof(WNDCLASSEX);
@@ -747,11 +830,11 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     int winY = (screenH - WIN_HEIGHT) / 2;
 
     HWND hwnd = CreateWindowEx(
-        0, "AES_GUI_CLASS",
-        "AES-128 Encryption & Decryption",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        winX, winY, WIN_WIDTH, WIN_HEIGHT,
-        NULL, NULL, hInst, NULL);
+                    0, "AES_GUI_CLASS",
+                    "AES-128 Encryption & Decryption",
+                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                    winX, winY, WIN_WIDTH, WIN_HEIGHT,
+                    NULL, NULL, hInst, NULL);
 
     if (!hwnd)
     {

@@ -3,13 +3,21 @@
 
 #define AES_BLOCK_SIZE 16
 
-void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16]);
-void AES_decrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16]);
+#define AES_128 16
+#define AES_192 24
+#define AES_256 32
+
+void AES_encrypt(const unsigned char *input, unsigned char *output,
+                 const unsigned char *key, int keySize);
+
+void AES_decrypt(const unsigned char *input, unsigned char *output,
+                 const unsigned char *key, int keySize);
 
 void SubBytes(unsigned char state[16]);
 void ShiftRows(unsigned char state[16]);
 void MixColumns(unsigned char state[16]);
 void AddRoundKey(unsigned char state[16], unsigned char roundKey[16]);
-void KeyExpansion(unsigned char key[16], unsigned char expandedKey[176]);
+
+void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize);
 
 #endif

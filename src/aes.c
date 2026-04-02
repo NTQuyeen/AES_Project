@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "aes.h"
 #include "aes_tables.h"
+#include <string.h>
 
 void SubBytes(unsigned char state[16])
 {
@@ -88,64 +89,73 @@ void SubWord(unsigned char *word)
         word[i] = sbox[word[i]];
 }
 
-void KeyExpansion(unsigned char key[16], unsigned char expandedKey[176])
+void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
 {
-    for(int i = 0; i < 16; i++)
+    int Nr = (keySize == 16) ? 10 : (keySize == 24 ? 12 : 14);
+    int totalBytes = 16 * (Nr + 1);
+
+    for (int i = 0; i < keySize; i++)
         expandedKey[i] = key[i];
 
-    int bytesGenerated = 16;
+    int bytesGenerated = keySize;
     int rconIteration = 1;
     unsigned char temp[4];
 
-    while(bytesGenerated < 176)
+    while (bytesGenerated < totalBytes)
     {
-        for(int i = 0; i < 4; i++)
+        for (int i = 0; i < 4; i++)
             temp[i] = expandedKey[bytesGenerated - 4 + i];
 
-        if(bytesGenerated % 16 == 0)
+        if (bytesGenerated % keySize == 0)
         {
             RotWord(temp);
             SubWord(temp);
             temp[0] ^= Rcon[rconIteration++];
         }
+        else if (keySize == 32 && bytesGenerated % keySize == 16)
+        {
+            SubWord(temp);
+        }
 
-        for(int i = 0; i < 4; i++)
+        for (int i = 0; i < 4; i++)
         {
             expandedKey[bytesGenerated] =
-                expandedKey[bytesGenerated - 16] ^ temp[i];
+                expandedKey[bytesGenerated - keySize] ^ temp[i];
             bytesGenerated++;
         }
     }
 }
 
-void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16])
+void AES_encrypt(const unsigned char *input, unsigned char *output,
+                 const unsigned char *key, int keySize)
 {
     unsigned char state[16];
-    unsigned char expandedKey[176];
+    unsigned char expandedKey[240];
 
-    for(int i = 0; i < 16; i++)
-        state[i] = input[i];
+    memset(expandedKey, 0, sizeof(expandedKey));
 
-    KeyExpansion(key, expandedKey);
+    int Nr = (keySize == 16) ? 10 : (keySize == 24 ? 12 : 14);
+
+    memcpy(state, input, 16);
+
+    KeyExpansion((unsigned char *)key, expandedKey, keySize);
 
     AddRoundKey(state, expandedKey);
 
-    for(int round = 1; round <= 9; round++)
+    for (int round = 1; round < Nr; round++)
     {
         SubBytes(state);
         ShiftRows(state);
         MixColumns(state);
-        AddRoundKey(state, expandedKey + (16 * round));
+        AddRoundKey(state, expandedKey + 16 * round);
     }
 
     SubBytes(state);
     ShiftRows(state);
-    AddRoundKey(state, expandedKey + 160);
+    AddRoundKey(state, expandedKey + 16 * Nr);
 
-    for(int i = 0; i < 16; i++)
-        output[i] = state[i];
+    memcpy(output, state, 16);
 }
-
 void InvSubBytes(unsigned char state[16])
 {
     for(int i=0;i<16;i++)
@@ -233,25 +243,27 @@ void InvMixColumns(unsigned char state[16])
         state[i] = temp[i];
 }
 
-void AES_decrypt(unsigned char input[16],
-                 unsigned char output[16],
-                 unsigned char key[16])
+void AES_decrypt(const unsigned char *input, unsigned char *output,
+                 const unsigned char *key, int keySize)
 {
     unsigned char state[16];
-    unsigned char expandedKey[176];
+    unsigned char expandedKey[240];
 
-    for(int i=0;i<16;i++)
-        state[i] = input[i];
+    memset(expandedKey, 0, sizeof(expandedKey));
 
-    KeyExpansion(key, expandedKey);
+    int Nr = (keySize == 16) ? 10 : (keySize == 24 ? 12 : 14);
 
-    AddRoundKey(state, expandedKey + 160);
+    memcpy(state, input, 16);
 
-    for(int round=9; round>=1; round--)
+    KeyExpansion((unsigned char *)key, expandedKey, keySize);
+
+    AddRoundKey(state, expandedKey + 16 * Nr);
+
+    for (int round = Nr - 1; round >= 1; round--)
     {
         InvShiftRows(state);
         InvSubBytes(state);
-        AddRoundKey(state, expandedKey + round*16);
+        AddRoundKey(state, expandedKey + 16 * round);
         InvMixColumns(state);
     }
 
@@ -259,6 +271,5 @@ void AES_decrypt(unsigned char input[16],
     InvSubBytes(state);
     AddRoundKey(state, expandedKey);
 
-    for(int i=0;i<16;i++)
-        output[i] = state[i];
+    memcpy(output, state, 16);
 }
