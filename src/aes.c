@@ -125,7 +125,6 @@ void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
         expandedKey[i] = key[i];
 
     int bytesGenerated = keySize;
-    int bytesGenerated = keySize;
     int rconIteration = 1;
     unsigned char temp[4];
 
@@ -153,7 +152,6 @@ void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
         {
             expandedKey[bytesGenerated] =
                 expandedKey[bytesGenerated - keySize] ^ temp[i];
-                expandedKey[bytesGenerated - keySize] ^ temp[i];
             bytesGenerated++;
         }
     }
@@ -168,10 +166,6 @@ void AES_encrypt(unsigned char input[16], unsigned char output[16],
     unsigned char state[16];
     unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
     int Nr = get_num_rounds(keySize);
-
-    memset(expandedKey, 0, sizeof(expandedKey));
-
-    int Nr = (keySize == 16) ? 10 : (keySize == 24 ? 12 : 14);
 
     memcpy(state, input, 16);
 

@@ -47,11 +47,9 @@ static HWND hStaticTimeEnc, hStaticTimeDec, hStaticStatus;
 static HWND hStaticKeyType;
 static HWND hLabelKey, hLabelFile, hLabelOriginal, hLabelResult;
 static HWND hTitle;
-static HWND hComboAES;
 
 static HBRUSH hBrBg, hBrSurface, hBrInput;
 static HFONT hFontTitle, hFontLabel, hFontNormal, hFontMono, hFontBtn;
-
 
 static char g_inputPath[MAX_PATH] = {0};
 static char g_encPath[MAX_PATH]   = {0};
@@ -88,9 +86,6 @@ static void build_output_paths(const char *inputPath)
     sprintf(g_decPath, "%sdecrypted.txt", dir);
 }
 
-/* ================== ENCRYPT FILE ================== */
-static int encrypt_file(const char *inputFile, const char *outputFile,
-                        unsigned char *key, int keySize)
 static int encrypt_file(const char *inputFile, const char *outputFile,
                         unsigned char *key, int keySize)
 {
@@ -124,9 +119,6 @@ static int encrypt_file(const char *inputFile, const char *outputFile,
     return 0;
 }
 
-/* ================== DECRYPT FILE ================== */
-static int decrypt_file(const char *inputFile, const char *outputFile,
-                        unsigned char *key, int keySize)
 static int decrypt_file(const char *inputFile, const char *outputFile,
                         unsigned char *key, int keySize)
 {
@@ -515,26 +507,6 @@ static void create_controls(HWND hwnd)
         leftMargin, y, contentW, 22,
         hwnd, (HMENU)ID_STATIC_STATUS, NULL, NULL);
     SendMessage(hStaticStatus, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
-
-    hComboAES = CreateWindow("COMBOBOX", "",
-                             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-                             leftMargin, y, 200, 200,
-                             hwnd, (HMENU)ID_COMBO_AES, NULL, NULL);
-
-    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-128");
-    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-192");
-    SendMessage(hComboAES, CB_ADDSTRING, 0, (LPARAM)"AES-256");
-
-    SendMessage(hComboAES, CB_SETCURSEL, 0, 0);
-    y += 40;
-}
-
-static int get_key_size(void)
-{
-    int sel = SendMessage(hComboAES, CB_GETCURSEL, 0, 0);
-    if (sel == 0) return 16;
-    if (sel == 1) return 24;
-    return 32;
 }
 
 /* ================== BROWSE FILE ================== */
@@ -632,6 +604,7 @@ static void do_encrypt(HWND hwnd)
     const char *aesName = (keySize == 16) ? "AES-128" :
                           (keySize == 24) ? "AES-192" : "AES-256";
 
+    SetWindowText(hEditResult, "");
     SetWindowText(hStaticStatus, "Status: Encrypting...");
     UpdateWindow(hwnd);
 
@@ -646,7 +619,7 @@ static void do_encrypt(HWND hwnd)
         return;
     }
 
-    double elapsed = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
 
     char timeStr[128];
     sprintf(timeStr, "Encryption time:  %.6f s (%s)", elapsed, aesName);
@@ -703,6 +676,7 @@ static void do_decrypt(HWND hwnd)
     const char *aesName = (keySize == 16) ? "AES-128" :
                           (keySize == 24) ? "AES-192" : "AES-256";
 
+    SetWindowText(hEditResult, "");
     SetWindowText(hStaticStatus, "Status: Decrypting...");
     UpdateWindow(hwnd);
 
@@ -717,7 +691,7 @@ static void do_decrypt(HWND hwnd)
         return;
     }
 
-    double elapsed = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+    double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
 
     char timeStr[128];
     sprintf(timeStr, "Decryption time:  %.6f s (%s)", elapsed, aesName);
