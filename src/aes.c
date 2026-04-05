@@ -125,6 +125,7 @@ void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
         expandedKey[i] = key[i];
 
     int bytesGenerated = keySize;
+    int bytesGenerated = keySize;
     int rconIteration = 1;
     unsigned char temp[4];
 
@@ -152,6 +153,7 @@ void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
         {
             expandedKey[bytesGenerated] =
                 expandedKey[bytesGenerated - keySize] ^ temp[i];
+                expandedKey[bytesGenerated - keySize] ^ temp[i];
             bytesGenerated++;
         }
     }
@@ -167,8 +169,11 @@ void AES_encrypt(unsigned char input[16], unsigned char output[16],
     unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
     int Nr = get_num_rounds(keySize);
 
-    for(int i = 0; i < 16; i++)
-        state[i] = input[i];
+    memset(expandedKey, 0, sizeof(expandedKey));
+
+    int Nr = (keySize == 16) ? 10 : (keySize == 24 ? 12 : 14);
+
+    memcpy(state, input, 16);
 
     KeyExpansion(key, expandedKey, keySize);
 
@@ -181,7 +186,7 @@ void AES_encrypt(unsigned char input[16], unsigned char output[16],
         SubBytes(state);
         ShiftRows(state);
         MixColumns(state);
-        AddRoundKey(state, expandedKey + (16 * round));
+        AddRoundKey(state, expandedKey + 16 * round);
     }
 
     /* Final round: no MixColumns */
@@ -189,8 +194,7 @@ void AES_encrypt(unsigned char input[16], unsigned char output[16],
     ShiftRows(state);
     AddRoundKey(state, expandedKey + (16 * Nr));
 
-    for(int i = 0; i < 16; i++)
-        output[i] = state[i];
+    memcpy(output, state, 16);
 }
 
 /* ========== InvSubBytes ========== */
@@ -319,6 +323,5 @@ void AES_decrypt(unsigned char input[16], unsigned char output[16],
     InvSubBytes(state);
     AddRoundKey(state, expandedKey);  /* K0 */
 
-    for(int i=0;i<16;i++)
-        output[i] = state[i];
+    memcpy(output, state, 16);
 }
