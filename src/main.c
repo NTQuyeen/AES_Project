@@ -8,19 +8,22 @@
 
 /* ======================== CONSTANTS ======================== */
 #define WIN_WIDTH   820
-#define WIN_HEIGHT  720
+#define WIN_HEIGHT  760
 
-#define ID_BTN_BROWSE    1001
-#define ID_BTN_ENCRYPT   1002
-#define ID_BTN_DECRYPT   1003
-#define ID_BTN_RANDOM    1004
-#define ID_EDIT_KEY      1005
-#define ID_EDIT_FILEPATH 1006
-#define ID_EDIT_ORIGINAL 1007
-#define ID_EDIT_RESULT   1008
-#define ID_STATIC_TIME_ENC  1009
-#define ID_STATIC_TIME_DEC  1010
-#define ID_STATIC_STATUS    1011
+#define ID_BTN_BROWSE       1001
+#define ID_BTN_ENCRYPT      1002
+#define ID_BTN_DECRYPT      1003
+#define ID_BTN_RANDOM_128   1004
+#define ID_BTN_RANDOM_192   1005
+#define ID_BTN_RANDOM_256   1006
+#define ID_EDIT_KEY         1007
+#define ID_EDIT_FILEPATH    1008
+#define ID_EDIT_ORIGINAL    1009
+#define ID_EDIT_RESULT      1010
+#define ID_STATIC_TIME_ENC  1011
+#define ID_STATIC_TIME_DEC  1012
+#define ID_STATIC_STATUS    1013
+#define ID_STATIC_KEYTYPE   1014
 
 /* ======================== COLORS ======================== */
 #define CLR_BG          RGB(30, 30, 46)
@@ -29,6 +32,7 @@
 #define CLR_ACCENT2     RGB(166, 227, 161)
 #define CLR_ACCENT3     RGB(249, 226, 175)
 #define CLR_RED         RGB(243, 139, 168)
+#define CLR_PURPLE      RGB(203, 166, 247)
 #define CLR_TEXT        RGB(205, 214, 244)
 #define CLR_SUBTEXT    RGB(147, 153, 178)
 #define CLR_INPUT_BG   RGB(49, 50, 68)
@@ -37,8 +41,10 @@
 /* ======================== GLOBALS ======================== */
 static HWND hEditKey, hEditFilePath;
 static HWND hEditOriginal, hEditResult;
-static HWND hBtnBrowse, hBtnEncrypt, hBtnDecrypt, hBtnRandom;
+static HWND hBtnBrowse, hBtnEncrypt, hBtnDecrypt;
+static HWND hBtnRandom128, hBtnRandom192, hBtnRandom256;
 static HWND hStaticTimeEnc, hStaticTimeDec, hStaticStatus;
+static HWND hStaticKeyType;
 static HWND hLabelKey, hLabelFile, hLabelOriginal, hLabelResult;
 static HWND hTitle;
 
@@ -49,10 +55,13 @@ static char g_inputPath[MAX_PATH] = {0};
 static char g_encPath[MAX_PATH]   = {0};
 static char g_decPath[MAX_PATH]   = {0};
 
+/* Current key size: 0 = not selected, 16 = AES-128, 24 = AES-192, 32 = AES-256 */
+static int g_keySize = 0;
+
 /* ======================== HEX HELPERS ======================== */
-static void hex_to_bytes(const char *hex, unsigned char *bytes)
+static void hex_to_bytes(const char *hex, unsigned char *bytes, int numBytes)
 {
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < numBytes; i++)
         sscanf(hex + 2 * i, "%2hhx", &bytes[i]);
 }
 
@@ -66,7 +75,6 @@ static void bytes_to_hex(const unsigned char *bytes, int len, char *out)
 /* ======================== BUILD OUTPUT PATHS ======================== */
 static void build_output_paths(const char *inputPath)
 {
-    /* Extract directory */
     char dir[MAX_PATH] = {0};
     strcpy(dir, inputPath);
     char *lastSlash = strrchr(dir, '\\');
@@ -79,7 +87,8 @@ static void build_output_paths(const char *inputPath)
 }
 
 /* ================== ENCRYPT FILE ================== */
-static int encrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int encrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
     FILE *fin = fopen(inputFile, "rb");
     if (!fin) return -1;
@@ -98,7 +107,7 @@ static int encrypt_file(const char *inputFile, const char *outputFile, unsigned 
             for (int i = bytesRead; i < 16; i++)
                 buffer[i] = pad;
         }
-        AES_encrypt(buffer, encrypted, key);
+        AES_encrypt(buffer, encrypted, key, keySize);
         fwrite(encrypted, 1, 16, fout);
     }
 
@@ -108,7 +117,8 @@ static int encrypt_file(const char *inputFile, const char *outputFile, unsigned 
 }
 
 /* ================== DECRYPT FILE ================== */
-static int decrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int decrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
     FILE *fin = fopen(inputFile, "rb");
     if (!fin) return -1;
@@ -121,7 +131,7 @@ static int decrypt_file(const char *inputFile, const char *outputFile, unsigned 
 
     while (fread(buffer, 1, 16, fin) == 16)
     {
-        AES_decrypt(buffer, decrypted, key);
+        AES_decrypt(buffer, decrypted, key, keySize);
         if (!first)
             fwrite(prev, 1, 16, fout);
         memcpy(prev, decrypted, 16);
@@ -151,7 +161,6 @@ static char *read_file_text(const char *path, long *outLen)
     long len = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    /* Limit display to 4KB */
     long readLen = (len > 4096) ? 4096 : len;
     char *buf = (char *)malloc(readLen + 64);
     if (!buf) { fclose(f); return NULL; }
@@ -188,7 +197,6 @@ static char *read_file_hex(const char *path)
     fread(raw, 1, readLen, f);
     fclose(f);
 
-    /* Each byte -> "XX " (3 chars) + line breaks every 48 chars */
     char *hex = (char *)malloc(readLen * 4 + 256);
     if (!hex) { free(raw); return NULL; }
 
@@ -209,15 +217,50 @@ static char *read_file_hex(const char *path)
 }
 
 /* ================== GENERATE RANDOM KEY ================== */
-static void generate_random_key(char *hexOut)
+static void generate_random_key(char *hexOut, int keyBytes)
 {
     srand((unsigned)time(NULL) ^ (unsigned)GetTickCount());
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < keyBytes; i++)
     {
         unsigned char b = (unsigned char)(rand() & 0xFF);
         sprintf(hexOut + i * 2, "%02X", b);
     }
-    hexOut[32] = '\0';
+    hexOut[keyBytes * 2] = '\0';
+}
+
+/* ================== UPDATE KEY TYPE DISPLAY ================== */
+static void update_key_type_label(void)
+{
+    char label[128];
+    char keyLabel[128];
+
+    if (g_keySize == 16)
+    {
+        sprintf(label, "  Current: AES-128  |  Key: 128 bit  |  Rounds: 10");
+        sprintf(keyLabel, "AES Key (32 hex characters):");
+        SendMessage(hEditKey, EM_SETLIMITTEXT, 32, 0);
+    }
+    else if (g_keySize == 24)
+    {
+        sprintf(label, "  Current: AES-192  |  Key: 192 bit  |  Rounds: 12");
+        sprintf(keyLabel, "AES Key (48 hex characters):");
+        SendMessage(hEditKey, EM_SETLIMITTEXT, 48, 0);
+    }
+    else if (g_keySize == 32)
+    {
+        sprintf(label, "  Current: AES-256  |  Key: 256 bit  |  Rounds: 14");
+        sprintf(keyLabel, "AES Key (64 hex characters):");
+        SendMessage(hEditKey, EM_SETLIMITTEXT, 64, 0);
+    }
+    else
+    {
+        sprintf(label, "  Please select a key type by clicking a Random button below");
+        sprintf(keyLabel, "AES Key:");
+        SendMessage(hEditKey, EM_SETLIMITTEXT, 64, 0);
+    }
+
+    SetWindowText(hStaticKeyType, label);
+    SetWindowText(hLabelKey, keyLabel);
 }
 
 /* ================== CREATE FONTS ================== */
@@ -250,10 +293,12 @@ static void draw_button(LPDRAWITEMSTRUCT dis)
     COLORREF bgColor, textColor;
     int id = dis->CtlID;
 
-    if (id == ID_BTN_ENCRYPT)      { bgColor = CLR_ACCENT;  textColor = RGB(30,30,46); }
-    else if (id == ID_BTN_DECRYPT) { bgColor = CLR_ACCENT2; textColor = RGB(30,30,46); }
-    else if (id == ID_BTN_RANDOM)  { bgColor = CLR_ACCENT3; textColor = RGB(30,30,46); }
-    else                           { bgColor = CLR_SURFACE;  textColor = CLR_TEXT; }
+    if (id == ID_BTN_ENCRYPT)          { bgColor = CLR_ACCENT;  textColor = RGB(30,30,46); }
+    else if (id == ID_BTN_DECRYPT)     { bgColor = CLR_ACCENT2; textColor = RGB(30,30,46); }
+    else if (id == ID_BTN_RANDOM_128)  { bgColor = CLR_ACCENT3; textColor = RGB(30,30,46); }
+    else if (id == ID_BTN_RANDOM_192)  { bgColor = CLR_PURPLE;  textColor = RGB(30,30,46); }
+    else if (id == ID_BTN_RANDOM_256)  { bgColor = CLR_RED;     textColor = RGB(30,30,46); }
+    else                               { bgColor = CLR_SURFACE;  textColor = CLR_TEXT; }
 
     /* Hover effect */
     if (dis->itemState & ODS_SELECTED)
@@ -287,28 +332,6 @@ static void draw_button(LPDRAWITEMSTRUCT dis)
     DeleteObject(hPen);
 }
 
-/* ================== DRAW SECTION PANEL ================== */
-static void draw_section(HDC hdc, int x, int y, int w, int h, const char *label)
-{
-    HBRUSH hBr = CreateSolidBrush(CLR_SURFACE);
-    HPEN hPen = CreatePen(PS_SOLID, 1, CLR_BORDER);
-    SelectObject(hdc, hBr);
-    SelectObject(hdc, hPen);
-    RoundRect(hdc, x, y, x + w, y + h, 16, 16);
-
-    if (label)
-    {
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, CLR_ACCENT);
-        SelectObject(hdc, hFontLabel);
-        RECT r = { x + 14, y + 8, x + w - 14, y + 28 };
-        DrawText(hdc, label, -1, &r, DT_LEFT | DT_SINGLELINE);
-    }
-
-    DeleteObject(hBr);
-    DeleteObject(hPen);
-}
-
 /* ================== CREATE CONTROLS ================== */
 static void create_controls(HWND hwnd)
 {
@@ -318,17 +341,50 @@ static void create_controls(HWND hwnd)
 
     /* Title */
     hTitle = CreateWindow("STATIC",
-        "  AES-128  Encryption / Decryption",
+        "  AES  Encryption / Decryption",
         WS_CHILD | WS_VISIBLE | SS_CENTER,
         leftMargin, y, contentW, 36,
         hwnd, NULL, NULL, NULL);
     SendMessage(hTitle, WM_SETFONT, (WPARAM)hFontTitle, TRUE);
     y += 50;
 
-    /* Key label */
-    hLabelKey = CreateWindow("STATIC", "AES Key (32 hex characters):",
+    /* === 3 Random Key Buttons === */
+    {
+        int btnW = 220;
+        int gap = 15;
+        int totalW = btnW * 3 + gap * 2;
+        int startX = (WIN_WIDTH - totalW) / 2;
+
+        hBtnRandom128 = CreateWindow("BUTTON", "Random Key 128-bit",
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+            startX, y, btnW, 34,
+            hwnd, (HMENU)ID_BTN_RANDOM_128, NULL, NULL);
+
+        hBtnRandom192 = CreateWindow("BUTTON", "Random Key 192-bit",
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+            startX + btnW + gap, y, btnW, 34,
+            hwnd, (HMENU)ID_BTN_RANDOM_192, NULL, NULL);
+
+        hBtnRandom256 = CreateWindow("BUTTON", "Random Key 256-bit",
+            WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+            startX + (btnW + gap) * 2, y, btnW, 34,
+            hwnd, (HMENU)ID_BTN_RANDOM_256, NULL, NULL);
+    }
+    y += 44;
+
+    /* Key type info label */
+    hStaticKeyType = CreateWindow("STATIC",
+        "  Please select a key type by clicking a Random button above",
         WS_CHILD | WS_VISIBLE,
-        leftMargin, y, 250, 20,
+        leftMargin, y, contentW, 22,
+        hwnd, (HMENU)ID_STATIC_KEYTYPE, NULL, NULL);
+    SendMessage(hStaticKeyType, WM_SETFONT, (WPARAM)hFontNormal, TRUE);
+    y += 30;
+
+    /* Key label */
+    hLabelKey = CreateWindow("STATIC", "AES Key:",
+        WS_CHILD | WS_VISIBLE,
+        leftMargin, y, 300, 20,
         hwnd, NULL, NULL, NULL);
     SendMessage(hLabelKey, WM_SETFONT, (WPARAM)hFontLabel, TRUE);
     y += 24;
@@ -336,16 +392,10 @@ static void create_controls(HWND hwnd)
     /* Key input */
     hEditKey = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_UPPERCASE,
-        leftMargin, y, contentW - 120, 30,
+        leftMargin, y, contentW, 30,
         hwnd, (HMENU)ID_EDIT_KEY, NULL, NULL);
     SendMessage(hEditKey, WM_SETFONT, (WPARAM)hFontMono, TRUE);
-    SendMessage(hEditKey, EM_SETLIMITTEXT, 32, 0);
-
-    /* Random button */
-    hBtnRandom = CreateWindow("BUTTON", "Random Key",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        leftMargin + contentW - 110, y, 110, 30,
-        hwnd, (HMENU)ID_BTN_RANDOM, NULL, NULL);
+    SendMessage(hEditKey, EM_SETLIMITTEXT, 64, 0);
     y += 44;
 
     /* File label */
@@ -381,10 +431,10 @@ static void create_controls(HWND hwnd)
     /* Original content textbox */
     hEditOriginal = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        leftMargin, y, contentW, 100,
+        leftMargin, y, contentW, 90,
         hwnd, (HMENU)ID_EDIT_ORIGINAL, NULL, NULL);
     SendMessage(hEditOriginal, WM_SETFONT, (WPARAM)hFontMono, TRUE);
-    y += 110;
+    y += 100;
 
     /* Buttons row */
     int btnW = 180;
@@ -414,10 +464,10 @@ static void create_controls(HWND hwnd)
     /* Result textbox */
     hEditResult = CreateWindowEx(WS_EX_CLIENTEDGE, "EDIT", "",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
-        leftMargin, y, contentW, 100,
+        leftMargin, y, contentW, 90,
         hwnd, (HMENU)ID_EDIT_RESULT, NULL, NULL);
     SendMessage(hEditResult, WM_SETFONT, (WPARAM)hFontMono, TRUE);
-    y += 110;
+    y += 100;
 
     /* Time labels */
     hStaticTimeEnc = CreateWindow("STATIC", "Encryption time:  --",
@@ -434,7 +484,7 @@ static void create_controls(HWND hwnd)
     y += 30;
 
     /* Status */
-    hStaticStatus = CreateWindow("STATIC", "Status: Ready",
+    hStaticStatus = CreateWindow("STATIC", "Status: Ready — Select key type to begin",
         WS_CHILD | WS_VISIBLE,
         leftMargin, y, contentW, 22,
         hwnd, (HMENU)ID_STATIC_STATUS, NULL, NULL);
@@ -462,7 +512,6 @@ static void do_browse(HWND hwnd)
         SetWindowText(hEditFilePath, szFile);
         build_output_paths(szFile);
 
-        /* Show original content */
         long len = 0;
         char *content = read_file_text(szFile, &len);
         if (content)
@@ -481,23 +530,30 @@ static void do_browse(HWND hwnd)
 }
 
 /* ================== GET KEY ================== */
-static int get_key(unsigned char key[16])
+static int get_key(unsigned char *key, int *outKeySize)
 {
-    char hexKey[64] = {0};
+    char hexKey[130] = {0};
     GetWindowText(hEditKey, hexKey, sizeof(hexKey));
 
-    if (strlen(hexKey) != 32)
-        return -1;
+    int hexLen = (int)strlen(hexKey);
+
+    /* Determine key size from hex length */
+    int keyBytes = 0;
+    if (hexLen == 32)      keyBytes = 16;  /* AES-128 */
+    else if (hexLen == 48) keyBytes = 24;  /* AES-192 */
+    else if (hexLen == 64) keyBytes = 32;  /* AES-256 */
+    else return -1;
 
     /* Validate hex */
-    for (int i = 0; i < 32; i++)
+    for (int i = 0; i < hexLen; i++)
     {
         char c = hexKey[i];
         if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
             return -1;
     }
 
-    hex_to_bytes(hexKey, key);
+    hex_to_bytes(hexKey, key, keyBytes);
+    *outKeySize = keyBytes;
     return 0;
 }
 
@@ -510,18 +566,30 @@ static void do_encrypt(HWND hwnd)
         return;
     }
 
-    unsigned char key[16];
-    if (get_key(key) != 0)
+    unsigned char key[32];
+    int keySize = 0;
+    if (get_key(key, &keySize) != 0)
     {
-        MessageBox(hwnd, "Invalid key! Please enter exactly 32 hex characters (0-9, A-F).", "Error", MB_ICONWARNING);
+        MessageBox(hwnd,
+            "Invalid key!\n\n"
+            "Please enter a valid hex key:\n"
+            "  AES-128: 32 hex characters\n"
+            "  AES-192: 48 hex characters\n"
+            "  AES-256: 64 hex characters\n\n"
+            "Or click one of the Random Key buttons.",
+            "Error", MB_ICONWARNING);
         return;
     }
+
+    /* Determine AES type name for display */
+    const char *aesName = (keySize == 16) ? "AES-128" :
+                          (keySize == 24) ? "AES-192" : "AES-256";
 
     SetWindowText(hStaticStatus, "Status: Encrypting...");
     UpdateWindow(hwnd);
 
     clock_t start = clock();
-    int result = encrypt_file(g_inputPath, g_encPath, key);
+    int result = encrypt_file(g_inputPath, g_encPath, key, keySize);
     clock_t end = clock();
 
     if (result != 0)
@@ -533,22 +601,23 @@ static void do_encrypt(HWND hwnd)
 
     double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
     char timeStr[128];
-    sprintf(timeStr, "Encryption time:  %.6f s", elapsed);
+    sprintf(timeStr, "Encryption time:  %.6f s (%s)", elapsed, aesName);
     SetWindowText(hStaticTimeEnc, timeStr);
 
     /* Show encrypted content as hex */
     char *hexContent = read_file_hex(g_encPath);
     if (hexContent)
     {
-        char *display = (char *)malloc(strlen(hexContent) + 128);
-        sprintf(display, "[Encrypted Data - HEX]\r\nOutput: %s\r\n\r\n%s", g_encPath, hexContent);
+        char *display = (char *)malloc(strlen(hexContent) + 256);
+        sprintf(display, "[Encrypted Data - %s - HEX]\r\nOutput: %s\r\n\r\n%s",
+                aesName, g_encPath, hexContent);
         SetWindowText(hEditResult, display);
         free(display);
         free(hexContent);
     }
 
     char statusMsg[256];
-    sprintf(statusMsg, "Status: Encryption completed! Output -> %s", g_encPath);
+    sprintf(statusMsg, "Status: %s encryption completed! Output -> %s", aesName, g_encPath);
     SetWindowText(hStaticStatus, statusMsg);
 }
 
@@ -561,10 +630,17 @@ static void do_decrypt(HWND hwnd)
         return;
     }
 
-    unsigned char key[16];
-    if (get_key(key) != 0)
+    unsigned char key[32];
+    int keySize = 0;
+    if (get_key(key, &keySize) != 0)
     {
-        MessageBox(hwnd, "Invalid key! Please enter exactly 32 hex characters (0-9, A-F).", "Error", MB_ICONWARNING);
+        MessageBox(hwnd,
+            "Invalid key!\n\n"
+            "Please enter a valid hex key:\n"
+            "  AES-128: 32 hex characters\n"
+            "  AES-192: 48 hex characters\n"
+            "  AES-256: 64 hex characters",
+            "Error", MB_ICONWARNING);
         return;
     }
 
@@ -577,11 +653,14 @@ static void do_decrypt(HWND hwnd)
     }
     fclose(test);
 
+    const char *aesName = (keySize == 16) ? "AES-128" :
+                          (keySize == 24) ? "AES-192" : "AES-256";
+
     SetWindowText(hStaticStatus, "Status: Decrypting...");
     UpdateWindow(hwnd);
 
     clock_t start = clock();
-    int result = decrypt_file(g_encPath, g_decPath, key);
+    int result = decrypt_file(g_encPath, g_decPath, key, keySize);
     clock_t end = clock();
 
     if (result != 0)
@@ -593,7 +672,7 @@ static void do_decrypt(HWND hwnd)
 
     double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
     char timeStr[128];
-    sprintf(timeStr, "Decryption time:  %.6f s", elapsed);
+    sprintf(timeStr, "Decryption time:  %.6f s (%s)", elapsed, aesName);
     SetWindowText(hStaticTimeDec, timeStr);
 
     /* Show decrypted content */
@@ -601,15 +680,16 @@ static void do_decrypt(HWND hwnd)
     char *content = read_file_text(g_decPath, &len);
     if (content)
     {
-        char *display = (char *)malloc(strlen(content) + 128);
-        sprintf(display, "[Decrypted Data]\r\nOutput: %s\r\n\r\n%s", g_decPath, content);
+        char *display = (char *)malloc(strlen(content) + 256);
+        sprintf(display, "[Decrypted Data - %s]\r\nOutput: %s\r\n\r\n%s",
+                aesName, g_decPath, content);
         SetWindowText(hEditResult, display);
         free(display);
         free(content);
     }
 
     char statusMsg[256];
-    sprintf(statusMsg, "Status: Decryption completed! Output -> %s", g_decPath);
+    sprintf(statusMsg, "Status: %s decryption completed! Output -> %s", aesName, g_decPath);
     SetWindowText(hStaticStatus, statusMsg);
 }
 
@@ -634,6 +714,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         if (hCtrl == hTitle)
             SetTextColor(hdc, CLR_ACCENT);
+        else if (hCtrl == hStaticKeyType)
+            SetTextColor(hdc, CLR_PURPLE);
         else if (hCtrl == hStaticTimeEnc)
             SetTextColor(hdc, CLR_ACCENT3);
         else if (hCtrl == hStaticTimeDec)
@@ -693,11 +775,34 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case ID_BTN_DECRYPT:
             do_decrypt(hwnd);
             break;
-        case ID_BTN_RANDOM:
+        case ID_BTN_RANDOM_128:
         {
-            char hexKey[33];
-            generate_random_key(hexKey);
+            char hexKey[65];
+            g_keySize = 16;
+            generate_random_key(hexKey, 16);
             SetWindowText(hEditKey, hexKey);
+            update_key_type_label();
+            SetWindowText(hStaticStatus, "Status: AES-128 key generated (32 hex chars)");
+            break;
+        }
+        case ID_BTN_RANDOM_192:
+        {
+            char hexKey[65];
+            g_keySize = 24;
+            generate_random_key(hexKey, 24);
+            SetWindowText(hEditKey, hexKey);
+            update_key_type_label();
+            SetWindowText(hStaticStatus, "Status: AES-192 key generated (48 hex chars)");
+            break;
+        }
+        case ID_BTN_RANDOM_256:
+        {
+            char hexKey[65];
+            g_keySize = 32;
+            generate_random_key(hexKey, 32);
+            SetWindowText(hEditKey, hexKey);
+            update_key_type_label();
+            SetWindowText(hStaticStatus, "Status: AES-256 key generated (64 hex chars)");
             break;
         }
         }
@@ -732,7 +837,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
     wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
     wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
     wc.lpszClassName  = "AES_GUI_CLASS";
-    wc.hbrBackground  = NULL;  /* We paint background ourselves */
+    wc.hbrBackground  = NULL;
 
     if (!RegisterClassEx(&wc))
     {
@@ -740,7 +845,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
         return 1;
     }
 
-    /* Center window on screen */
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
     int winX = (screenW - WIN_WIDTH) / 2;
@@ -748,7 +852,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow)
 
     HWND hwnd = CreateWindowEx(
         0, "AES_GUI_CLASS",
-        "AES-128 Encryption & Decryption",
+        "AES Encryption & Decryption (128 / 192 / 256)",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         winX, winY, WIN_WIDTH, WIN_HEIGHT,
         NULL, NULL, hInst, NULL);

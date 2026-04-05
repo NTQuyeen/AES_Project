@@ -3,6 +3,6 @@
 
 extern unsigned char sbox[256];
 extern unsigned char inv_sbox[256];
-extern unsigned char Rcon[11];
+extern unsigned char Rcon[15];
 
 #endif

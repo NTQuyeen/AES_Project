@@ -1,5 +1,5 @@
 # BÁO CÁO ĐỒ ÁN
-# MÃ HÓA VÀ GIẢI MÃ FILE DỮ LIỆU BẰNG THUẬT TOÁN AES-128
+# MÃ HÓA VÀ GIẢI MÃ FILE DỮ LIỆU BẰNG THUẬT TOÁN AES
 
 ---
 
@@ -7,23 +7,24 @@
 
 1. [Giới thiệu chung](#1-giới-thiệu-chung)
 2. [Cơ sở lý thuyết AES](#2-cơ-sở-lý-thuyết-aes)
-3. [Chi tiết thuật toán AES-128](#3-chi-tiết-thuật-toán-aes-128)
-4. [Quy trình mã hóa (Encryption)](#4-quy-trình-mã-hóa-encryption)
-5. [Quy trình giải mã (Decryption)](#5-quy-trình-giải-mã-decryption)
-6. [Mở rộng khóa (Key Expansion)](#6-mở-rộng-khóa-key-expansion)
-7. [Xử lý file và Padding](#7-xử-lý-file-và-padding)
-8. [Kiến trúc chương trình](#8-kiến-trúc-chương-trình)
-9. [Giao diện người dùng (GUI)](#9-giao-diện-người-dùng-gui)
-10. [Flow hoạt động tổng thể](#10-flow-hoạt-động-tổng-thể)
-11. [Đo thời gian mã hóa / giải mã](#11-đo-thời-gian-mã-hóa--giải-mã)
-12. [Ví dụ minh họa](#12-ví-dụ-minh-họa)
+3. [Chi tiết thuật toán AES](#3-chi-tiết-thuật-toán-aes)
+4. [So sánh AES-128 / AES-192 / AES-256](#4-so-sánh-aes-128--aes-192--aes-256)
+5. [Quy trình mã hóa (Encryption)](#5-quy-trình-mã-hóa-encryption)
+6. [Quy trình giải mã (Decryption)](#6-quy-trình-giải-mã-decryption)
+7. [Mở rộng khóa (Key Expansion)](#7-mở-rộng-khóa-key-expansion)
+8. [Xử lý file và Padding](#8-xử-lý-file-và-padding)
+9. [Kiến trúc chương trình](#9-kiến-trúc-chương-trình)
+10. [Giao diện người dùng (GUI)](#10-giao-diện-người-dùng-gui)
+11. [Flow hoạt động tổng thể](#11-flow-hoạt-động-tổng-thể)
+12. [Đo thời gian mã hóa / giải mã](#12-đo-thời-gian-mã-hóa--giải-mã)
+13. [Ví dụ minh họa](#13-ví-dụ-minh-họa)
 
 ---
 
 ## 1. Giới thiệu chung
 
 ### 1.1. Đề tài
-**Viết chương trình mã hóa và giải mã bằng mật mã AES.** Mã hóa một file dữ liệu (các ký tự), cho biết thời gian mã hóa và thời gian giải mã.
+**Viết chương trình mã hóa và giải mã bằng mật mã AES.** Hỗ trợ cả 3 phiên bản AES-128, AES-192, AES-256. Mã hóa một file dữ liệu (các ký tự), cho biết thời gian mã hóa và thời gian giải mã.
 
 ### 1.2. AES là gì?
 **AES (Advanced Encryption Standard)** là thuật toán mã hóa đối xứng được NIST (Viện Tiêu chuẩn và Công nghệ Quốc gia Hoa Kỳ) chọn làm tiêu chuẩn mã hóa vào năm 2001, thay thế cho DES.
@@ -34,15 +35,20 @@
 - **Kích thước khóa:** 128 / 192 / 256 bit
 - **Ứng dụng:** SSL/TLS, VPN, mã hóa ổ đĩa, WiFi WPA2...
 
-### 1.3. Phiên bản sử dụng
-Chương trình này sử dụng **AES-128** (khóa 128 bit = 16 byte = 32 ký tự hex).
+### 1.3. Các phiên bản AES được hỗ trợ
 
-| Thông số | Giá trị |
-|---|---|
-| Kích thước khối (Block Size) | 128 bit = 16 byte |
-| Kích thước khóa (Key Size) | 128 bit = 16 byte |
-| Số vòng lặp (Rounds) | 10 |
-| Kích thước khóa mở rộng | 176 byte (11 × 16) |
+Chương trình hỗ trợ **cả 3 phiên bản** AES:
+
+| Thông số | AES-128 | AES-192 | AES-256 |
+|---|---|---|---|
+| Kích thước khóa | 128 bit (16 byte) | 192 bit (24 byte) | 256 bit (32 byte) |
+| Số ký tự hex | 32 | 48 | 64 |
+| Kích thước khối | 128 bit (16 byte) | 128 bit (16 byte) | 128 bit (16 byte) |
+| Số vòng lặp (Rounds) | 10 | 12 | 14 |
+| Nk (số word khóa) | 4 | 6 | 8 |
+| Expanded Key Size | 176 byte (11×16) | 208 byte (13×16) | 240 byte (15×16) |
+
+**Lưu ý quan trọng:** Kích thước khối luôn là **128 bit (16 byte)** cho cả 3 phiên bản. Chỉ có kích thước khóa, số vòng, và thuật toán Key Expansion khác nhau.
 
 ---
 
@@ -77,11 +83,16 @@ Hàng 3 [ b3  ]  [ b7  ]  [ b11 ]  [ b15 ]
 
 ---
 
-## 3. Chi tiết thuật toán AES-128
+## 3. Chi tiết thuật toán AES
 
 ### 3.1. Tổng quan các bước
 
-AES-128 thực hiện **10 vòng (rounds)** biến đổi, mỗi vòng gồm 4 phép biến đổi:
+AES thực hiện **Nr vòng (rounds)** biến đổi tùy theo kích thước khóa:
+- **AES-128:** 10 vòng
+- **AES-192:** 12 vòng
+- **AES-256:** 14 vòng
+
+Mỗi vòng gồm 4 phép biến đổi:
 
 | Phép biến đổi | Tên tiếng Việt | Mục đích |
 |---|---|---|
@@ -111,7 +122,7 @@ Byte đầu ra:   0xED
 1. Tính nghịch đảo nhân trong trường GF(2⁸) 
 2. Áp dụng phép biến đổi affine
 
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 5-9):
+**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
 void SubBytes(unsigned char state[16])
 {
@@ -142,32 +153,6 @@ TRƯỚC ShiftRows:          SAU ShiftRows:
 [ a3  a7  a11  a15 ]      [ a15 a3  a7   a11 ]   ← Hàng 3: dịch trái 3
 ```
 
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 11-34):
-```c
-void ShiftRows(unsigned char state[16])
-{
-    unsigned char temp;
-
-    // Hàng 1: dịch trái 1
-    temp = state[1];
-    state[1] = state[5];
-    state[5] = state[9];
-    state[9] = state[13];
-    state[13] = temp;
-
-    // Hàng 2: dịch trái 2 (swap 2 cặp)
-    temp = state[2]; state[2] = state[10]; state[10] = temp;
-    temp = state[6]; state[6] = state[14]; state[14] = temp;
-
-    // Hàng 3: dịch trái 3 (= dịch phải 1)
-    temp = state[3];
-    state[3] = state[15];
-    state[15] = state[11];
-    state[11] = state[7];
-    state[7] = temp;
-}
-```
-
 ### 3.4. MixColumns — Trộn cột
 
 **Mục đích:** Trộn lẫn các byte trong cùng một cột, tạo tính khuếch tán (diffusion) — thay đổi 1 byte input sẽ ảnh hưởng tới nhiều byte output.
@@ -188,17 +173,15 @@ void ShiftRows(unsigned char state[16])
 - Nhân với **2**: dùng hàm `xtime()` — dịch trái 1 bit, nếu bit cao nhất là 1 thì XOR với 0x1B
 - Nhân với **3**: = nhân 2 XOR giá trị gốc
 
-**Hàm xtime** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 36-39):
+**Hàm xtime** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
 unsigned char xtime(unsigned char x)
 {
     return (x << 1) ^ ((x >> 7) * 0x1b);
-    // Nếu bit 7 = 1: (x<<1) XOR 0x1B
-    // Nếu bit 7 = 0: (x<<1)
 }
 ```
 
-**Lưu ý:** MixColumns **KHÔNG** được thực hiện ở vòng cuối cùng (vòng 10).
+**Lưu ý:** MixColumns **KHÔNG** được thực hiện ở vòng cuối cùng.
 
 ### 3.5. AddRoundKey — Cộng khóa vòng
 
@@ -210,7 +193,7 @@ unsigned char xtime(unsigned char x)
 state[i] = state[i] XOR roundKey[i]    (với i = 0..15)
 ```
 
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 70-74):
+**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
 void AddRoundKey(unsigned char state[16], unsigned char roundKey[16])
 {
@@ -223,9 +206,53 @@ void AddRoundKey(unsigned char state[16], unsigned char roundKey[16])
 
 ---
 
-## 4. Quy trình mã hóa (Encryption)
+## 4. So sánh AES-128 / AES-192 / AES-256
 
-### 4.1. Sơ đồ tổng thể
+### 4.1. Bảng so sánh tổng quan
+
+| Đặc điểm | AES-128 | AES-192 | AES-256 |
+|---|---|---|---|
+| **Kích thước khóa** | 128 bit (16 byte) | 192 bit (24 byte) | 256 bit (32 byte) |
+| **Hex input** | 32 ký tự | 48 ký tự | 64 ký tự |
+| **Số vòng (Nr)** | 10 | 12 | 14 |
+| **Nk (key words)** | 4 | 6 | 8 |
+| **Expanded Key** | 176 byte | 208 byte | 240 byte |
+| **Round Keys** | 11 | 13 | 15 |
+| **Bảo mật** | Cao | Rất cao | Cực cao |
+| **Tốc độ** | Nhanh nhất | Trung bình | Chậm nhất |
+| **Ứng dụng** | Đa dụng | Chính phủ | Quân sự, tài chính |
+
+### 4.2. Điểm giống nhau (cả 3 phiên bản)
+
+- Kích thước khối: **128 bit** (16 byte)
+- Các phép biến đổi: **SubBytes, ShiftRows, MixColumns, AddRoundKey** — hoàn toàn giống nhau
+- Padding: **PKCS#7** — giống nhau
+- Cấu trúc vòng: Vòng đầu chỉ AddRoundKey, vòng cuối không có MixColumns
+
+### 4.3. Điểm khác nhau chính
+
+**1. Số vòng lặp:**
+```
+AES-128: 1 vòng khởi tạo + 9 vòng chính + 1 vòng cuối = 10 vòng
+AES-192: 1 vòng khởi tạo + 11 vòng chính + 1 vòng cuối = 12 vòng
+AES-256: 1 vòng khởi tạo + 13 vòng chính + 1 vòng cuối = 14 vòng
+```
+
+**2. Key Expansion:**
+- AES-128: Modulo theo 16 byte (Nk=4)
+- AES-192: Modulo theo 24 byte (Nk=6)
+- AES-256: Modulo theo 32 byte (Nk=8) + **thêm bước SubWord** tại `i % 8 == 4`
+
+**3. Bảo mật vs Tốc độ:**
+- Nhiều vòng hơn = **bảo mật cao hơn** nhưng **chậm hơn**
+- AES-128 đã đủ an toàn cho hầu hết ứng dụng
+- AES-256 dùng khi cần bảo mật tối đa (quân sự, top-secret)
+
+---
+
+## 5. Quy trình mã hóa (Encryption)
+
+### 5.1. Sơ đồ tổng thể
 
 ```
 Plaintext (16 byte)
@@ -238,43 +265,43 @@ Plaintext (16 byte)
         ▼
 ┌──────────────────┐
 │  SubBytes        │
-│  ShiftRows       │  ← Vòng 1 → 9 (Main Rounds): đủ 4 bước
+│  ShiftRows       │  ← Vòng 1 → Nr-1 (Main Rounds): đủ 4 bước
 │  MixColumns      │
 │  AddRoundKey(Ki) │
 └──────────────────┘
-        │ (lặp 9 lần)
+        │ (lặp Nr-1 lần: 9/11/13 lần tùy phiên bản)
         ▼
 ┌──────────────────┐
 │  SubBytes        │
-│  ShiftRows       │  ← Vòng 10 (Final Round): KHÔNG có MixColumns
-│  AddRoundKey(K10)│
+│  ShiftRows       │  ← Vòng Nr (Final Round): KHÔNG có MixColumns
+│  AddRoundKey(KNr)│
 └──────────────────┘
         │
         ▼
   Ciphertext (16 byte)
 ```
 
-### 4.2. Code mã hóa
+### 5.2. Code mã hóa (hỗ trợ AES-128/192/256)
 
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 121-147):
+**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
-void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16])
+void AES_encrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
 {
     unsigned char state[16];
-    unsigned char expandedKey[176];
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];  // 240 byte (max)
+    int Nr = get_num_rounds(keySize);  // 10/12/14
 
-    // Sao chép input vào state
     for(int i = 0; i < 16; i++)
         state[i] = input[i];
 
-    // Mở rộng khóa: 16 byte → 176 byte (11 round keys)
-    KeyExpansion(key, expandedKey);
+    KeyExpansion(key, expandedKey, keySize);
 
     // Vòng 0: chỉ AddRoundKey
     AddRoundKey(state, expandedKey);
 
-    // Vòng 1 → 9: SubBytes → ShiftRows → MixColumns → AddRoundKey
-    for(int round = 1; round <= 9; round++)
+    // Vòng 1 → Nr-1: SubBytes → ShiftRows → MixColumns → AddRoundKey
+    for(int round = 1; round <= Nr - 1; round++)
     {
         SubBytes(state);
         ShiftRows(state);
@@ -282,26 +309,25 @@ void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned cha
         AddRoundKey(state, expandedKey + (16 * round));
     }
 
-    // Vòng 10: SubBytes → ShiftRows → AddRoundKey (KHÔNG MixColumns)
+    // Vòng Nr: SubBytes → ShiftRows → AddRoundKey (KHÔNG MixColumns)
     SubBytes(state);
     ShiftRows(state);
-    AddRoundKey(state, expandedKey + 160);
+    AddRoundKey(state, expandedKey + (16 * Nr));
 
-    // Sao chép state ra output
     for(int i = 0; i < 16; i++)
         output[i] = state[i];
 }
 ```
 
-### 4.3. Tại sao vòng cuối không có MixColumns?
+### 5.3. Tại sao vòng cuối không có MixColumns?
 
 Nếu thêm MixColumns ở vòng cuối, nó sẽ không tăng thêm bảo mật nhưng lại làm cấu trúc mã hóa và giải mã không đối xứng. Bỏ MixColumns ở vòng cuối giúp thuật toán có cấu trúc gọn gàng hơn khi giải mã.
 
 ---
 
-## 5. Quy trình giải mã (Decryption)
+## 6. Quy trình giải mã (Decryption)
 
-### 5.1. Nguyên tắc
+### 6.1. Nguyên tắc
 
 Giải mã AES thực hiện các phép biến đổi **ngược** (inverse), theo thứ tự **đảo ngược**:
 
@@ -312,24 +338,24 @@ Giải mã AES thực hiện các phép biến đổi **ngược** (inverse), th
 | MixColumns | **InvMixColumns** — nhân với ma trận nghịch đảo |
 | AddRoundKey | **AddRoundKey** — giữ nguyên (XOR 2 lần = trả về ban đầu) |
 
-### 5.2. Sơ đồ giải mã
+### 6.2. Sơ đồ giải mã
 
 ```
 Ciphertext (16 byte)
         │
         ▼
 ┌──────────────────────┐
-│  AddRoundKey(K10)    │  ← Bắt đầu từ khóa cuối
+│  AddRoundKey(KNr)    │  ← Bắt đầu từ khóa cuối
 └──────────────────────┘
         │
         ▼
 ┌──────────────────────┐
 │  InvShiftRows        │
-│  InvSubBytes         │  ← Vòng 9 → 1 (ngược lại)
+│  InvSubBytes         │  ← Vòng Nr-1 → 1 (ngược lại)
 │  AddRoundKey(Ki)     │
 │  InvMixColumns       │
 └──────────────────────┘
-        │ (lặp 9 lần, round từ 9 xuống 1)
+        │ (lặp Nr-1 lần, round từ Nr-1 xuống 1)
         ▼
 ┌──────────────────────┐
 │  InvShiftRows        │
@@ -341,7 +367,7 @@ Ciphertext (16 byte)
   Plaintext (16 byte)
 ```
 
-### 5.3. InvSubBytes — Thay thế byte ngược
+### 6.3. InvSubBytes — Thay thế byte ngược
 
 Dùng **Inverse S-Box** (bảng tra cứu ngược 256 phần tử):
 
@@ -355,7 +381,7 @@ void InvSubBytes(unsigned char state[16])
 
 **Tính chất:** `inv_sbox[sbox[x]] = x` (nghịch đảo hoàn toàn)
 
-### 5.4. InvShiftRows — Dịch hàng ngược
+### 6.4. InvShiftRows — Dịch hàng ngược
 
 Dịch vòng các hàng sang **phải** (ngược với ShiftRows):
 
@@ -366,7 +392,7 @@ Hàng 2: dịch phải 2 vị trí
 Hàng 3: dịch phải 3 vị trí
 ```
 
-### 5.5. InvMixColumns — Trộn cột ngược
+### 6.5. InvMixColumns — Trộn cột ngược
 
 Nhân mỗi cột với **ma trận nghịch đảo** trong GF(2⁸):
 
@@ -379,43 +405,27 @@ Nhân mỗi cột với **ma trận nghịch đảo** trong GF(2⁸):
 └          ┘   └                ┘   └          ┘
 ```
 
-Sử dụng hàm **gmul** (Galois Field Multiplication) để nhân trong GF(2⁸):
+### 6.6. Code giải mã (hỗ trợ AES-128/192/256)
 
+**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
-unsigned char gmul(unsigned char a, unsigned char b)
-{
-    unsigned char p = 0;
-    for(int i = 0; i < 8; i++)
-    {
-        if(b & 1) p ^= a;           // Nếu bit thấp nhất của b = 1 → cộng a
-        unsigned char hi = a & 0x80; // Lưu bit cao nhất
-        a <<= 1;                     // Nhân a với 2
-        if(hi) a ^= 0x1b;           // Nếu tràn → modulo đa thức bất khả quy
-        b >>= 1;                     // Dịch b sang phải
-    }
-    return p;
-}
-```
-
-### 5.6. Code giải mã
-
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 236-264):
-```c
-void AES_decrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16])
+void AES_decrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
 {
     unsigned char state[16];
-    unsigned char expandedKey[176];
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    int Nr = get_num_rounds(keySize);  // 10/12/14
 
-    for(int i = 0; i < 16; i++)
+    for(int i=0;i<16;i++)
         state[i] = input[i];
 
-    KeyExpansion(key, expandedKey);
+    KeyExpansion(key, expandedKey, keySize);
 
-    // Bắt đầu từ khóa vòng cuối (K10)
-    AddRoundKey(state, expandedKey + 160);
+    // Bắt đầu từ khóa vòng cuối (KNr)
+    AddRoundKey(state, expandedKey + Nr * 16);
 
-    // Vòng 9 → 1 (ngược lại)
-    for(int round = 9; round >= 1; round--)
+    // Vòng Nr-1 → 1 (ngược lại)
+    for(int round = Nr - 1; round >= 1; round--)
     {
         InvShiftRows(state);
         InvSubBytes(state);
@@ -428,118 +438,144 @@ void AES_decrypt(unsigned char input[16], unsigned char output[16], unsigned cha
     InvSubBytes(state);
     AddRoundKey(state, expandedKey);  // K0 (khóa gốc)
 
-    for(int i = 0; i < 16; i++)
+    for(int i=0;i<16;i++)
         output[i] = state[i];
 }
 ```
 
 ---
 
-## 6. Mở rộng khóa (Key Expansion)
+## 7. Mở rộng khóa (Key Expansion)
 
-### 6.1. Tại sao cần mở rộng khóa?
+### 7.1. Tại sao cần mở rộng khóa?
 
-AES-128 có 10 vòng + 1 vòng khởi tạo = **11 round keys**, mỗi round key 16 byte.
+AES cần **(Nr + 1) round keys**, mỗi round key 16 byte:
+
+| Phiên bản | Nr | Round Keys | Expanded Key |
+|---|---|---|---|
+| AES-128 | 10 | 11 | 176 byte |
+| AES-192 | 12 | 13 | 208 byte |
+| AES-256 | 14 | 15 | 240 byte |
+
+### 7.2. Thuật toán Key Expansion — Tổng quát
 
 ```
-Khóa gốc: 16 byte → Khóa mở rộng: 11 × 16 = 176 byte
-```
+Input:  Key gốc (Nk words, mỗi word 4 byte)
+        Nk = 4 (AES-128) / 6 (AES-192) / 8 (AES-256)
+Output: Expanded Key = (Nr+1) × 16 byte
 
-### 6.2. Thuật toán Key Expansion
+Bước 1: Sao chép key gốc vào Nk word đầu tiên
 
-```
-Input:  Key gốc 16 byte (4 words, mỗi word 4 byte)
-Output: Expanded Key 176 byte (44 words)
-
-Bước 1: Sao chép key gốc vào 4 word đầu tiên (W0, W1, W2, W3)
-
-Bước 2: Với mỗi word Wi (i ≥ 4):
-   - Nếu i chia hết cho 4:
-        temp = W[i-1]
-        temp = RotWord(temp)      ← Xoay vòng byte: [a,b,c,d] → [b,c,d,a]
-        temp = SubWord(temp)      ← SubBytes cho từng byte trong word
-        temp[0] ^= Rcon[i/4]     ← XOR với hằng số vòng Rcon
-        W[i] = W[i-4] XOR temp
+Bước 2: Với mỗi word Wi (i ≥ Nk):
+   - Nếu i % Nk == 0:
+        temp = RotWord(W[i-1])
+        temp = SubWord(temp)
+        temp[0] ^= Rcon[i/Nk]
+        W[i] = W[i-Nk] XOR temp
+   - Nếu Nk == 8 VÀ i % Nk == 4:     ← CHỈ AES-256
+        temp = SubWord(W[i-1])
+        W[i] = W[i-Nk] XOR temp
    - Nếu không:
-        W[i] = W[i-4] XOR W[i-1]
+        W[i] = W[i-Nk] XOR W[i-1]
 ```
 
-### 6.3. RotWord và SubWord
+### 7.3. So sánh Key Expansion giữa 3 phiên bản
+
+#### AES-128 (Nk=4)
+```
+W[i] mới tạo dựa trên W[i-4] và W[i-1]
+Tại mỗi vị trí i % 4 == 0: RotWord + SubWord + Rcon
+Tổng: 44 words = 176 byte
+```
+
+#### AES-192 (Nk=6)
+```
+W[i] mới tạo dựa trên W[i-6] và W[i-1]
+Tại mỗi vị trí i % 6 == 0: RotWord + SubWord + Rcon
+Tổng: 52 words = 208 byte
+```
+
+#### AES-256 (Nk=8)
+```
+W[i] mới tạo dựa trên W[i-8] và W[i-1]
+Tại mỗi vị trí i % 8 == 0: RotWord + SubWord + Rcon
+Tại mỗi vị trí i % 8 == 4: SubWord (THÊM!)  ← ĐIỂM KHÁC BIỆT QUAN TRỌNG
+Tổng: 60 words = 240 byte
+```
+
+**⚠️ AES-256 có thêm bước SubWord khi i % Nk == 4 — đây là điểm khác biệt quan trọng nhất.**
+
+### 7.4. RotWord và SubWord
 
 ```
 RotWord:  [a0, a1, a2, a3] → [a1, a2, a3, a0]  (xoay vòng 1 byte)
 SubWord:  Áp dụng S-Box cho từng byte trong word
 ```
 
-### 6.4. Bảng Rcon (Round Constant)
+### 7.5. Bảng Rcon (Round Constant) — Mở rộng
 
 ```
-Rcon = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
-         (bỏ qua) R1    R2    R3    R4    R5    R6    R7    R8    R9    R10
+Rcon = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D]
+         ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑     ↑
+       skip   R1    R2    R3    R4    R5    R6    R7    R8    R9   R10   R11   R12   R13   R14
 ```
 
-Rcon là lũy thừa của 2 trong GF(2⁸), dùng để mỗi round key khác nhau.
+AES-128 dùng R1→R10, AES-192 dùng R1→R8, AES-256 dùng R1→R7.
 
-### 6.5. Code Key Expansion
+### 7.6. Code Key Expansion (hỗ trợ cả 3 phiên bản)
 
-**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c) dòng 91-119):
+**Trong code** ([aes.c](file:///d:/CSATBMTT/AES_Project/src/aes.c)):
 ```c
-void KeyExpansion(unsigned char key[16], unsigned char expandedKey[176])
+void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
 {
-    // Sao chép key gốc vào 16 byte đầu
-    for(int i = 0; i < 16; i++)
+    int Nk = keySize / 4;
+    int Nr = get_num_rounds(keySize);
+    int expandedKeySize = 16 * (Nr + 1);
+
+    // Sao chép key gốc
+    for(int i = 0; i < keySize; i++)
         expandedKey[i] = key[i];
 
-    int bytesGenerated = 16;
+    int bytesGenerated = keySize;
     int rconIteration = 1;
     unsigned char temp[4];
 
-    while(bytesGenerated < 176)
+    while(bytesGenerated < expandedKeySize)
     {
-        // Lấy 4 byte cuối cùng đã tạo
         for(int i = 0; i < 4; i++)
             temp[i] = expandedKey[bytesGenerated - 4 + i];
 
-        // Tại mỗi vị trí chia hết cho 16 (đầu mỗi round key)
-        if(bytesGenerated % 16 == 0)
+        if(bytesGenerated % keySize == 0)
         {
-            RotWord(temp);              // Xoay vòng
-            SubWord(temp);              // Thay thế S-Box
-            temp[0] ^= Rcon[rconIteration++]; // XOR Rcon
+            RotWord(temp);
+            SubWord(temp);
+            temp[0] ^= Rcon[rconIteration++];
+        }
+        // AES-256: thêm SubWord khi i % Nk == 4
+        else if(Nk == 8 && (bytesGenerated % keySize) == 16)
+        {
+            SubWord(temp);
         }
 
-        // XOR với word cách 16 byte trước đó
         for(int i = 0; i < 4; i++)
         {
             expandedKey[bytesGenerated] =
-                expandedKey[bytesGenerated - 16] ^ temp[i];
+                expandedKey[bytesGenerated - keySize] ^ temp[i];
             bytesGenerated++;
         }
     }
 }
 ```
 
-### 6.6. Minh họa Key Expansion
-
-```
-Key gốc:  2B 7E 15 16 28 AE D2 A6 AB F7 15 88 09 CF 4F 3C
-
-Round Key 0 (K0):  2B 7E 15 16 28 AE D2 A6 AB F7 15 88 09 CF 4F 3C
-Round Key 1 (K1):  A0 FA FE 17 88 54 2C B1 23 A3 39 39 2A 6C 76 05
-Round Key 2 (K2):  F2 C2 95 F2 7A 96 B9 43 59 35 80 7A 73 59 F6 7F
-...
-Round Key 10 (K10): D0 14 F9 A8 C9 EE 25 89 E1 3F 0C C8 B6 63 0C A6
-```
-
 ---
 
-## 7. Xử lý file và Padding
+## 8. Xử lý file và Padding
 
-### 7.1. Tại sao cần Padding?
+### 8.1. Tại sao cần Padding?
 
-AES chỉ xử lý **đúng 16 byte mỗi khối**. Nếu file không chia hết cho 16 byte, khối cuối cùng cần được **đệm thêm byte** (padding).
+AES chỉ xử lý **đúng 16 byte mỗi khối**. Nếu file không chia hết cho 16 byte, khối cuối cùng cần được **đệm thêm byte** (padding). Điều này **giống nhau cho cả 3 phiên bản AES**.
 
-### 7.2. PKCS#7 Padding
+### 8.2. PKCS#7 Padding
 
 Chương trình sử dụng chuẩn **PKCS#7**:
 - Nếu thiếu `N` byte → đệm `N` byte, mỗi byte có giá trị `N`
@@ -554,43 +590,28 @@ Kết quả:  48 65 6C 6C 6F 20 57 6F 72 6C 64 21 [04 04 04 04]
            H  e  l  l  o     W  o  r  l  d  !   ← padding →
 ```
 
-**Trường hợp đặc biệt:**
-```
-Thiếu 1 byte  → thêm  01
-Thiếu 2 byte  → thêm  02 02
-Thiếu 3 byte  → thêm  03 03 03
-...
-Thiếu 15 byte → thêm  0F 0F 0F 0F 0F 0F 0F 0F 0F 0F 0F 0F 0F 0F 0F
-```
+### 8.3. Code Padding khi mã hóa
 
-### 7.3. Code Padding khi mã hóa
-
-**Trong code** ([main.c](file:///d:/CSATBMTT/AES_Project/src/main.c) dòng 82-108):
+**Trong code** ([main.c](file:///d:/CSATBMTT/AES_Project/src/main.c)):
 ```c
-static int encrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int encrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
-    // Mở file input (binary read) và output (binary write)
     FILE *fin = fopen(inputFile, "rb");
     FILE *fout = fopen(outputFile, "wb");
 
     unsigned char buffer[16], encrypted[16];
     int bytesRead;
 
-    // Đọc từng khối 16 byte
     while ((bytesRead = fread(buffer, 1, 16, fin)) > 0)
     {
-        // Nếu đọc được < 16 byte → padding PKCS#7
         if (bytesRead < 16)
         {
             unsigned char pad = 16 - bytesRead;
             for (int i = bytesRead; i < 16; i++)
-                buffer[i] = pad;  // Đệm giá trị = số byte thiếu
+                buffer[i] = pad;
         }
-
-        // Mã hóa AES cho khối 16 byte
-        AES_encrypt(buffer, encrypted, key);
-
-        // Ghi 16 byte đã mã hóa ra file output
+        AES_encrypt(buffer, encrypted, key, keySize);
         fwrite(encrypted, 1, 16, fout);
     }
 
@@ -600,11 +621,12 @@ static int encrypt_file(const char *inputFile, const char *outputFile, unsigned 
 }
 ```
 
-### 7.4. Bỏ Padding khi giải mã
+### 8.4. Bỏ Padding khi giải mã
 
-**Trong code** ([main.c](file:///d:/CSATBMTT/AES_Project/src/main.c) dòng 111-143):
+**Trong code** ([main.c](file:///d:/CSATBMTT/AES_Project/src/main.c)):
 ```c
-static int decrypt_file(const char *inputFile, const char *outputFile, unsigned char key[16])
+static int decrypt_file(const char *inputFile, const char *outputFile,
+                        unsigned char *key, int keySize)
 {
     FILE *fin = fopen(inputFile, "rb");
     FILE *fout = fopen(outputFile, "wb");
@@ -612,27 +634,22 @@ static int decrypt_file(const char *inputFile, const char *outputFile, unsigned 
     unsigned char buffer[16], decrypted[16], prev[16];
     int first = 1;
 
-    // Đọc từng khối 16 byte
     while (fread(buffer, 1, 16, fin) == 16)
     {
-        AES_decrypt(buffer, decrypted, key);
-
-        // Ghi khối trước đó (trì hoãn 1 khối để xử lý padding ở khối cuối)
+        AES_decrypt(buffer, decrypted, key, keySize);
         if (!first)
             fwrite(prev, 1, 16, fout);
-
         memcpy(prev, decrypted, 16);
         first = 0;
     }
 
-    // Khối cuối cùng: đọc giá trị padding
     if (!first)
     {
-        int pad = prev[15];  // Byte cuối = số byte padding
+        int pad = prev[15];
         if (pad >= 1 && pad <= 16)
-            fwrite(prev, 1, 16 - pad, fout);  // Ghi bỏ padding
+            fwrite(prev, 1, 16 - pad, fout);
         else
-            fwrite(prev, 1, 16, fout);         // Padding không hợp lệ → ghi hết
+            fwrite(prev, 1, 16, fout);
     }
 
     fclose(fin);
@@ -641,25 +658,20 @@ static int decrypt_file(const char *inputFile, const char *outputFile, unsigned 
 }
 ```
 
-**Giải thích logic trì hoãn (deferred write):**
-- Khối cuối cùng chứa padding → cần xử lý riêng
-- Không biết khối nào là cuối cho đến khi đọc hết file
-- → Giải pháp: luôn giữ lại khối vừa giải mã trong `prev`, chỉ ghi khi đọc được khối tiếp theo
-
 ---
 
-## 8. Kiến trúc chương trình
+## 9. Kiến trúc chương trình
 
-### 8.1. Cấu trúc thư mục
+### 9.1. Cấu trúc thư mục
 
 ```
 AES_Project/
 ├── include/                     ← Headers & Lookup Tables
-│   ├── aes.h                   ← Khai báo hàm AES
+│   ├── aes.h                   ← Khai báo hàm AES (hỗ trợ keySize)
 │   ├── aes_tables.h            ← Khai báo S-Box, Inv S-Box, Rcon
-│   └── aes_tables.c            ← Bảng dữ liệu S-Box (256 phần tử)
+│   └── aes_tables.c            ← Bảng dữ liệu S-Box, Rcon (15 phần tử)
 ├── src/                         ← Source Code
-│   ├── aes.c                   ← Lõi thuật toán AES-128
+│   ├── aes.c                   ← Lõi thuật toán AES-128/192/256
 │   └── main.c                  ← GUI + xử lý file (encrypt/decrypt)
 ├── input.txt                    ← File dữ liệu test
 ├── encrypted.bin                ← File đã mã hóa (output)
@@ -667,19 +679,20 @@ AES_Project/
 └── AES_Project.cbp              ← Project file Code::Blocks
 ```
 
-### 8.2. Mối quan hệ giữa các module
+### 9.2. Mối quan hệ giữa các module
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 main.c (GUI)                     │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────┐ │
-│  │ Win32 API    │ │ File I/O     │ │ Đo thời  │ │
-│  │ (giao diện)  │ │ (đọc/ghi)   │ │ gian     │ │
-│  └──────┬───────┘ └──────┬───────┘ └────┬─────┘ │
-│         │                │               │       │
-│         └────────┬───────┘───────────────┘       │
-│                  │ Gọi AES_encrypt / AES_decrypt │
-└──────────────────┼───────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                  main.c (GUI)                           │
+│  ┌──────────────┐ ┌──────────────┐ ┌────────────────┐ │
+│  │ Win32 API    │ │ File I/O     │ │ Đo thời gian   │ │
+│  │ (giao diện)  │ │ (đọc/ghi)   │ │ + chọn keySize │ │
+│  └──────┬───────┘ └──────┬───────┘ └────────┬───────┘ │
+│         │                │                   │         │
+│         └────────┬───────┘───────────────────┘         │
+│                  │ Gọi AES_encrypt/AES_decrypt          │
+│                  │ với tham số keySize (16/24/32)       │
+└──────────────────┼─────────────────────────────────────┘
                    │
           ┌────────▼────────┐
           │    aes.c        │
@@ -688,137 +701,147 @@ AES_Project/
           │ │ SubBytes    │ │
           │ │ ShiftRows   │ │
           │ │ MixColumns  │ │───── #include ────→  aes_tables.c
-          │ │ AddRoundKey │ │                      (S-Box, Rcon)
+          │ │ AddRoundKey │ │                      (S-Box, Rcon[15])
           │ │ KeyExpansion│ │
           │ └─────────────┘ │
           └─────────────────┘
 ```
 
-### 8.3. Danh sách hàm
+### 9.3. Danh sách hàm
 
 | File | Hàm | Mô tả |
 |---|---|---|
-| **aes.c** | `SubBytes()` | Thay thế byte qua S-Box |
+| **aes.c** | `get_num_rounds(keySize)` | Trả về số vòng: 10/12/14 |
+| | `SubBytes()` | Thay thế byte qua S-Box |
 | | `ShiftRows()` | Dịch hàng trái |
 | | `MixColumns()` | Trộn cột (nhân ma trận GF(2⁸)) |
 | | `AddRoundKey()` | XOR state với round key |
 | | `xtime()` | Nhân 2 trong GF(2⁸) |
 | | `RotWord()` | Xoay vòng 4 byte |
 | | `SubWord()` | SubBytes cho 1 word |
-| | `KeyExpansion()` | Mở rộng khóa 16→176 byte |
-| | `AES_encrypt()` | **Mã hóa 1 khối 16 byte** |
+| | `KeyExpansion(key, expanded, keySize)` | Mở rộng khóa (hỗ trợ 128/192/256) |
+| | `AES_encrypt(in, out, key, keySize)` | **Mã hóa 1 khối 16 byte** |
 | | `InvSubBytes()` | Thay thế byte qua Inverse S-Box |
 | | `InvShiftRows()` | Dịch hàng phải |
 | | `InvMixColumns()` | Trộn cột ngược |
 | | `gmul()` | Nhân Galois Field |
-| | `AES_decrypt()` | **Giải mã 1 khối 16 byte** |
-| **main.c** | `encrypt_file()` | Mã hóa toàn bộ file (nhiều khối) |
-| | `decrypt_file()` | Giải mã toàn bộ file |
-| | `hex_to_bytes()` | Chuyển chuỗi hex → byte array |
-| | `generate_random_key()` | Tạo khóa ngẫu nhiên |
+| | `AES_decrypt(in, out, key, keySize)` | **Giải mã 1 khối 16 byte** |
+| **main.c** | `encrypt_file(in, out, key, keySize)` | Mã hóa toàn bộ file |
+| | `decrypt_file(in, out, key, keySize)` | Giải mã toàn bộ file |
+| | `hex_to_bytes(hex, bytes, numBytes)` | Chuyển chuỗi hex → byte array |
+| | `generate_random_key(hexOut, keyBytes)` | Tạo khóa ngẫu nhiên (16/24/32 byte) |
+| | `get_key(key, outKeySize)` | Đọc key từ UI, tự nhận diện loại |
+| | `update_key_type_label()` | Cập nhật hiển thị loại khóa |
 | | `WinMain()` | Entry point GUI |
 
 ---
 
-## 9. Giao diện người dùng (GUI)
+## 10. Giao diện người dùng (GUI)
 
-### 9.1. Công nghệ
+### 10.1. Công nghệ
 
 - **Ngôn ngữ:** C thuần (không C++)
 - **GUI Framework:** Win32 API (Windows native)
 - **Compiler:** GCC (MinGW qua Code::Blocks)
 - **Thư viện:** `gdi32` (đồ họa), `comdlg32` (dialog chọn file)
 
-### 9.2. Bố cục giao diện
+### 10.2. Bố cục giao diện
 
 ```
-┌──────────────────────────────────────────────────────┐
-│            AES-128 Encryption / Decryption            │  ← Tiêu đề
-│──────────────────────────────────────────────────────│
-│                                                       │
-│  AES Key (32 hex characters):                         │  ← Label
-│  [________________________] [Random Key]              │  ← Input + Button
-│                                                       │
-│  Input File:                                          │  ← Label
-│  [________________________] [Browse...]               │  ← Input + Button
-│                                                       │
-│  Original Content:                                    │  ← Label
-│  ┌──────────────────────────────────────────────┐    │
-│  │ (hiển thị nội dung file gốc dạng text)       │    │  ← TextBox (read-only)
-│  └──────────────────────────────────────────────┘    │
-│                                                       │
-│         [  ENCRYPT  ]       [  DECRYPT  ]             │  ← 2 nút chính
-│                                                       │
-│  Result:                                              │  ← Label
-│  ┌──────────────────────────────────────────────┐    │
-│  │ (hiển thị kết quả: hex hoặc text)            │    │  ← TextBox (read-only)
-│  └──────────────────────────────────────────────┘    │
-│                                                       │
-│  Encryption time: 0.000123 s   Decryption time: ...   │  ← Thời gian
-│  Status: Ready                                        │  ← Thanh trạng thái
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              AES  Encryption / Decryption                │  ← Tiêu đề
+│──────────────────────────────────────────────────────────│
+│                                                           │
+│  [Random Key 128-bit]  [Random Key 192-bit]  [Random Key 256-bit]  ← 3 nút Random
+│                                                           │
+│  Current: AES-XXX  |  Key: XXX bit  |  Rounds: XX        │  ← Thông tin loại khóa
+│                                                           │
+│  AES Key (XX hex characters):                             │  ← Label (tự update)
+│  [____________________________________________________________]  ← Input hex key
+│                                                           │
+│  Input File:                                              │
+│  [________________________________________] [Browse...]   │
+│                                                           │
+│  Original Content:                                        │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │ (hiển thị nội dung file gốc dạng text)           │    │
+│  └──────────────────────────────────────────────────┘    │
+│                                                           │
+│         [  ENCRYPT  ]       [  DECRYPT  ]                 │  ← 2 nút chính
+│                                                           │
+│  Result:                                                  │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │ (hiển thị kết quả: hex hoặc text)                │    │
+│  └──────────────────────────────────────────────────┘    │
+│                                                           │
+│  Encryption time: 0.000123 s (AES-XXX)  Decryption: ...  │  ← Thời gian
+│  Status: Ready                                            │  ← Thanh trạng thái
+└──────────────────────────────────────────────────────────┘
 ```
 
-### 9.3. Mô tả các thành phần UI
+### 10.3. Mô tả các thành phần UI
 
 | Thành phần | Loại | Chức năng |
 |---|---|---|
-| **AES Key** | TextBox + giới hạn 32 ký tự | Nhập khóa AES dạng hex (VD: `2B7E151628AED2A6ABF7158809CF4F3C`) |
-| **Random Key** | Button | Tạo ngẫu nhiên 32 ký tự hex |
+| **Random Key 128-bit** | Button (màu vàng) | Tạo khóa ngẫu nhiên 32 ký tự hex, set mode AES-128 |
+| **Random Key 192-bit** | Button (màu tím) | Tạo khóa ngẫu nhiên 48 ký tự hex, set mode AES-192 |
+| **Random Key 256-bit** | Button (màu đỏ) | Tạo khóa ngẫu nhiên 64 ký tự hex, set mode AES-256 |
+| **Thông tin loại khóa** | Label | Hiển thị loại AES đang dùng, kích thước khóa, số vòng |
+| **AES Key** | TextBox | Nhập khóa AES dạng hex (giới hạn tự update) |
 | **Input File** | TextBox (read-only) | Hiện đường dẫn file đã chọn |
 | **Browse** | Button | Mở dialog chọn file Windows |
 | **Original Content** | TextBox (multiline, read-only) | Hiển thị nội dung file gốc |
-| **ENCRYPT** | Button | Thực hiện mã hóa |
-| **DECRYPT** | Button | Thực hiện giải mã |
-| **Result** | TextBox (multiline, read-only) | Hiển thị kết quả (hex nếu encrypt, text nếu decrypt) |
-| **Encryption time** | Label | Hiển thị thời gian mã hóa (giây) |
-| **Decryption time** | Label | Hiển thị thời gian giải mã (giây) |
+| **ENCRYPT** | Button (màu xanh dương) | Thực hiện mã hóa |
+| **DECRYPT** | Button (màu xanh lá) | Thực hiện giải mã |
+| **Result** | TextBox (multiline, read-only) | Hiển thị kết quả |
+| **Encryption/Decryption time** | Label | Hiển thị thời gian + loại AES |
 | **Status** | Label | Thông báo trạng thái hiện tại |
 
-### 9.4. Khóa AES (Key)
+### 10.4. Cơ chế chọn loại khóa
 
-**Đầu vào:** 32 ký tự hexadecimal (0-9, A-F)
+Khi mở chương trình, **chưa có loại khóa nào được chọn**. Người dùng ấn 1 trong 3 nút Random:
 
-**Chuyển đổi:** Mỗi 2 ký tự hex → 1 byte → tổng cộng 16 byte
+1. **Random Key 128-bit** → Tạo 32 hex chars → set AES-128
+2. **Random Key 192-bit** → Tạo 48 hex chars → set AES-192
+3. **Random Key 256-bit** → Tạo 64 hex chars → set AES-256
 
-```
-Hex input:  "2B7E151628AED2A6ABF7158809CF4F3C"
+Hệ thống tự nhận diện loại khóa dựa trên **độ dài chuỗi hex** khi encrypt/decrypt:
+- 32 ký tự → AES-128
+- 48 ký tự → AES-192
+- 64 ký tự → AES-256
 
-Chuyển đổi:
-  "2B" → 0x2B (43)     "7E" → 0x7E (126)
-  "15" → 0x15 (21)     "16" → 0x16 (22)
-  "28" → 0x28 (40)     "AE" → 0xAE (174)
-  "D2" → 0xD2 (210)    "A6" → 0xA6 (166)
-  "AB" → 0xAB (171)    "F7" → 0xF7 (247)
-  "15" → 0x15 (21)     "88" → 0x88 (136)
-  "09" → 0x09 (9)      "CF" → 0xCF (207)
-  "4F" → 0x4F (79)     "3C" → 0x3C (60)
-
-Key 16 byte: [2B, 7E, 15, 16, 28, AE, D2, A6, AB, F7, 15, 88, 09, CF, 4F, 3C]
-```
+Người dùng cũng có thể **tự nhập khóa** thủ công với độ dài tương ứng.
 
 ---
 
-## 10. Flow hoạt động tổng thể
+## 11. Flow hoạt động tổng thể
 
-### 10.1. Luồng mã hóa (Encrypt Flow)
+### 11.1. Luồng mã hóa (Encrypt Flow)
 
 ```
                     NGƯỜI DÙNG
                         │
          ┌──────────────┼──────────────┐
          ▼              ▼              ▼
-    Nhập Key       Chọn File      Nhấn ENCRYPT
-    (32 hex)     (Browse.txt)         │
+    Chọn loại khóa  Chọn File      Nhấn ENCRYPT
+    (Random 128/    (Browse.txt)       │
+     192/256)            │              │
          │              │              │
          └──────────────┼──────────────┘
                         │
                         ▼
               ┌─────────────────┐
-              │ Kiểm tra đầu vào│  Key đủ 32 hex?
-              │                 │  File tồn tại?
+              │ Kiểm tra đầu vào│  Key đủ 32/48/64 hex?
+              │ + nhận diện loại│  File tồn tại?
               └────────┬────────┘
                        │ OK
+                       ▼
+              ┌─────────────────┐
+              │  Xác định Nr    │  32 hex → Nr=10
+              │  từ key length  │  48 hex → Nr=12
+              │                 │  64 hex → Nr=14
+              └────────┬────────┘
+                       │
                        ▼
               ┌─────────────────┐
               │  Bắt đầu đo    │  clock_t start = clock()
@@ -844,8 +867,8 @@ Key 16 byte: [2B, 7E, 15, 16, 28, AE, D2, A6, AB, F7, 15, 88, 09, CF, 4F, 3C]
               └──────┬───────┘
                      ▼
               ┌─────────────────┐
-              │  AES_encrypt()  │  10 vòng biến đổi
-              │  16 byte → 16   │
+              │  AES_encrypt()  │  Nr vòng biến đổi
+              │  16 byte → 16   │  (tùy loại khóa)
               │  byte mã hóa   │
               └────────┬────────┘
                        │
@@ -857,130 +880,56 @@ Key 16 byte: [2B, 7E, 15, 16, 28, AE, D2, A6, AB, F7, 15, 88, 09, CF, 4F, 3C]
                        │
                        ▼
               ┌─────────────────┐
-              │  Kết thúc đo   │  clock_t end = clock()
-              │  thời gian     │  time = (end-start)/CLOCKS_PER_SEC
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
               │  Hiển thị kết  │  - Hex của encrypted.bin
-              │  quả lên UI    │  - Thời gian mã hóa
+              │  quả lên UI    │  - Thời gian + loại AES
               └─────────────────┘
 ```
 
-### 10.2. Luồng giải mã (Decrypt Flow)
+### 11.2. Luồng đầy đủ từ đầu đến cuối
 
 ```
-                    NGƯỜI DÙNG
-                        │
-                   Nhấn DECRYPT
-                        │
-                        ▼
-              ┌─────────────────┐
-              │ Kiểm tra:       │  encrypted.bin tồn tại?
-              │ Key đúng?       │  Key giống lúc encrypt?
-              └────────┬────────┘
-                       │ OK
-                       ▼
-              ┌─────────────────┐
-              │  Bắt đầu đo    │  clock_t start = clock()
-              │  thời gian      │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Đọc file       │  fread() 16 byte mỗi lần
-              │  encrypted.bin  │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  AES_decrypt()  │  10 vòng biến đổi ngược
-              │  16 byte → 16   │
-              │  byte gốc       │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │ Khối cuối cùng? │
-              └──┬──────────┬───┘
-             CÓ  │          │ KHÔNG
-                 ▼          ▼
-          ┌────────────┐  ┌──────────┐
-          │ Bỏ padding │  │ Ghi đủ   │
-          │ PKCS#7     │  │ 16 byte  │
-          └─────┬──────┘  └────┬─────┘
-                │              │
-                └──────┬───────┘
-                       ▼
-              ┌─────────────────┐
-              │  Ghi ra file    │  decrypted.txt
-              │  decrypted.txt  │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Kết thúc đo,  │  - Nội dung decrypted.txt
-              │  hiển thị UI   │  - Thời gian giải mã
-              └─────────────────┘
-```
-
-### 10.3. Luồng đầy đủ từ đầu đến cuối
-
-```
-1. Mở chương trình                → GUI hiện ra, Status: "Ready"
-2. Nhấn [Random Key]              → Key ngẫu nhiên: VD "A3F2B8C1D4E5F6789012345678ABCDEF"
+1. Mở chương trình               → GUI hiện ra, Status: "Ready — Select key type"
+2. Nhấn [Random Key 256-bit]     → Key 64 hex chars, hiện "AES-256 | 256 bit | 14 rounds"
 3. Nhấn [Browse] → chọn input.txt → Original Content hiện nội dung file
-4. Nhấn [ENCRYPT]                 → encrypted.bin được tạo cùng thư mục
-                                   → Result hiện hex data
-                                   → Encryption time: 0.000XXX s
-5. Nhấn [DECRYPT]                 → decrypted.txt được tạo cùng thư mục
+4. Nhấn [ENCRYPT]                → encrypted.bin được tạo
+                                   → Result hiện hex data (AES-256)
+                                   → Encryption time: 0.000XXX s (AES-256)
+5. Nhấn [DECRYPT]                → decrypted.txt được tạo
                                    → Result hiện nội dung đã giải mã
-                                   → Decryption time: 0.000XXX s
-6. So sánh "Original Content" với "Result" (sau decrypt) → PHẢI GIỐNG NHAU
+                                   → Decryption time: 0.000XXX s (AES-256)
+6. So sánh "Original Content" với "Result" → PHẢI GIỐNG NHAU
 ```
 
 ---
 
-## 11. Đo thời gian mã hóa / giải mã
+## 12. Đo thời gian mã hóa / giải mã
 
-### 11.1. Phương pháp
+### 12.1. Phương pháp
 
 Sử dụng hàm `clock()` từ thư viện `<time.h>`:
 
 ```c
-clock_t start = clock();          // Bắt đầu đo
-
-encrypt_file("input.txt", "encrypted.bin", key);  // Thực hiện mã hóa
-
-clock_t end = clock();            // Kết thúc đo
-
-double elapsed = (double)(end - start) / CLOCKS_PER_SEC;  // Tính thời gian (giây)
+clock_t start = clock();
+encrypt_file("input.txt", "encrypted.bin", key, keySize);
+clock_t end = clock();
+double elapsed = (double)(end - start) / CLOCKS_PER_SEC;
 ```
 
-### 11.2. Ý nghĩa
+### 12.2. So sánh thời gian giữa 3 phiên bản
 
-- **CLOCKS_PER_SEC**: Số "clock ticks" trong 1 giây (thường = 1000 trên Windows)
-- Thời gian tính bằng **giây**, hiện thị 6 chữ số thập phân (microsecond)
-- Thời gian phụ thuộc vào: **kích thước file** (nhiều khối → lâu hơn) và **tốc độ CPU**
+| Phiên bản | Số vòng | Thời gian tương đối |
+|---|---|---|
+| AES-128 | 10 | Nhanh nhất (baseline) |
+| AES-192 | 12 | ~20% chậm hơn AES-128 |
+| AES-256 | 14 | ~40% chậm hơn AES-128 |
 
-### 11.3. Kết quả mẫu
-
-```
-File kích thước 24 byte (2 khối AES):
-   Encryption time: 0.000012 s
-   Decryption time: 0.000008 s
-
-File kích thước 1 MB (~65536 khối):
-   Encryption time: 0.125000 s
-   Decryption time: 0.118000 s
-```
+Thời gian phụ thuộc vào: **kích thước file**, **loại khóa** (số vòng), và **tốc độ CPU**.
 
 ---
 
-## 12. Ví dụ minh họa
+## 13. Ví dụ minh họa
 
-### 12.1. Dữ liệu đầu vào
+### 13.1. Dữ liệu đầu vào
 
 ```
 File:   input.txt
@@ -988,53 +937,19 @@ Nội dung: "toi la ngu 1231@@@@!!L::"
 Kích thước: 24 byte
 ```
 
-### 12.2. Khóa AES
+### 13.2. So sánh mã hóa cùng file với 3 loại khóa
 
-```
-Key (hex): 2B7E151628AED2A6ABF7158809CF4F3C
-Key (byte): [2B, 7E, 15, 16, 28, AE, D2, A6, AB, F7, 15, 88, 09, CF, 4F, 3C]
-```
+| Bước | AES-128 | AES-192 | AES-256 |
+|---|---|---|---|
+| Key hex length | 32 ký tự | 48 ký tự | 64 ký tự |
+| Key bytes | 16 byte | 24 byte | 32 byte |
+| Rounds | 10 | 12 | 14 |
+| Expanded Key | 176 byte | 208 byte | 240 byte |
+| Input | 24 byte → 2 khối | 24 byte → 2 khối | 24 byte → 2 khối |
+| Output (encrypted) | 32 byte | 32 byte | 32 byte |
+| Decrypted | 24 byte ✅ | 24 byte ✅ | 24 byte ✅ |
 
-### 12.3. Quá trình mã hóa
-
-```
-Bước 1: Đọc file → 24 byte
-        "toi la ngu 1231@@@@!!L::"
-
-Bước 2: Chia thành khối 16 byte
-        Khối 1: "toi la ngu 1231@"  (16 byte, đủ 16)
-        Khối 2: "@@@!!L::"          (8 byte, cần padding)
-
-Bước 3: Padding PKCS#7 cho khối 2
-        Thiếu: 16 - 8 = 8 byte → đệm 8 byte giá trị 0x08
-        Khối 2 sau padding: "@@@!!L::" + [08 08 08 08 08 08 08 08]
-
-Bước 4: Mã hóa AES từng khối
-        Khối 1 → AES_encrypt() → 16 byte ciphertext
-        Khối 2 → AES_encrypt() → 16 byte ciphertext
-
-Bước 5: Ghi 32 byte ra encrypted.bin
-```
-
-### 12.4. Quá trình giải mã
-
-```
-Bước 1: Đọc encrypted.bin → 32 byte (2 khối)
-
-Bước 2: Giải mã AES từng khối
-        Khối 1 → AES_decrypt() → "toi la ngu 1231@"  (16 byte)
-        Khối 2 → AES_decrypt() → "@@@!!L::" + [08 08 08 08 08 08 08 08]
-
-Bước 3: Khối 1: ghi đủ 16 byte ra file
-
-Bước 4: Khối 2 (khối cuối): đọc padding
-        Byte cuối = 0x08 → padding = 8 byte
-        Ghi 16 - 8 = 8 byte → "@@@!!L::"
-
-Bước 5: File decrypted.txt = "toi la ngu 1231@@@@!!L::"
-
-Kết quả: GIỐNG HỆT file gốc ✅
-```
+**Kết quả:** Cả 3 phiên bản đều mã hóa/giải mã chính xác, khôi phục 100% dữ liệu gốc.
 
 ---
 
@@ -1042,14 +957,15 @@ Kết quả: GIỐNG HỆT file gốc ✅
 
 | Đặc điểm | Chi tiết |
 |---|---|
-| **Thuật toán** | AES-128 (Rijndael) |
+| **Thuật toán** | AES-128 / AES-192 / AES-256 (Rijndael) |
 | **Loại mã hóa** | Đối xứng, mã hóa khối |
-| **Kích thước khóa** | 128 bit (32 ký tự hex) |
-| **Kích thước khối** | 128 bit (16 byte) |
-| **Số vòng** | 10 rounds |
+| **Kích thước khóa** | 128 / 192 / 256 bit (chọn trên GUI) |
+| **Kích thước khối** | 128 bit (16 byte) — cố định |
+| **Số vòng** | 10 / 12 / 14 rounds (tương ứng) |
 | **Padding** | PKCS#7 |
 | **Ngôn ngữ** | C |
 | **Giao diện** | Win32 API (GUI Windows native) |
+| **Chọn loại khóa** | 3 nút Random (128/192/256) |
 | **Input** | File text bất kỳ |
 | **Output** | encrypted.bin (mã hóa) + decrypted.txt (giải mã) |
 | **Đo thời gian** | clock() — hiển thị microsecond |

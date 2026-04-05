@@ -2,14 +2,18 @@
 #define AES_H
 
 #define AES_BLOCK_SIZE 16
+#define AES_MAX_EXPANDED_KEY 240  /* AES-256: 15 * 16 = 240 */
 
-void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16]);
-void AES_decrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16]);
+/* keySize: 16 (AES-128), 24 (AES-192), 32 (AES-256) */
+void AES_encrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize);
+void AES_decrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize);
 
 void SubBytes(unsigned char state[16]);
 void ShiftRows(unsigned char state[16]);
 void MixColumns(unsigned char state[16]);
 void AddRoundKey(unsigned char state[16], unsigned char roundKey[16]);
-void KeyExpansion(unsigned char key[16], unsigned char expandedKey[176]);
+void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize);
 
 #endif
