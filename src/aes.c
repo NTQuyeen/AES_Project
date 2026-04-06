@@ -5,7 +5,7 @@
 #include "aes_tables.h"
 
 /* ========== Helper ========== */
-int get_num_rounds(int keySize)
+int AES_get_num_rounds(int keySize)
 {
     if (keySize == 24) return 12;
     if (keySize == 32) return 14;
@@ -106,22 +106,32 @@ unsigned char gmul(unsigned char a, unsigned char b)
     return p;
 }
 
-/* ========== InvMixColumns (TỐI ƯU) ========== */
+/* ========== InvMixColumns (SIÊU TỐI ƯU) ========== */
 void InvMixColumns(unsigned char state[16])
 {
     for(int i=0;i<4;i++)
     {
         int col=i*4;
 
-        unsigned char a=state[col];
-        unsigned char b=state[col+1];
-        unsigned char c=state[col+2];
-        unsigned char d=state[col+3];
+        unsigned char a = state[col];
+        unsigned char b = state[col+1];
+        unsigned char c = state[col+2];
+        unsigned char d = state[col+3];
 
-        state[col]   = gmul(a,14)^gmul(b,11)^gmul(c,13)^gmul(d,9);
-        state[col+1] = gmul(a,9)^gmul(b,14)^gmul(c,11)^gmul(d,13);
-        state[col+2] = gmul(a,13)^gmul(b,9)^gmul(c,14)^gmul(d,11);
-        state[col+3] = gmul(a,11)^gmul(b,13)^gmul(c,9)^gmul(d,14);
+        unsigned char u = xtime(xtime(a ^ c));
+        unsigned char v = xtime(xtime(b ^ d));
+
+        a ^= u;
+        b ^= v;
+        c ^= u;
+        d ^= v;
+
+        unsigned char t = a ^ b ^ c ^ d;
+
+        state[col]   = a ^ t ^ xtime(a ^ b);
+        state[col+1] = b ^ t ^ xtime(b ^ c);
+        state[col+2] = c ^ t ^ xtime(c ^ d);
+        state[col+3] = d ^ t ^ xtime(d ^ a);
     }
 }
 
@@ -144,7 +154,7 @@ void SubWord(unsigned char *word)
 void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
 {
     int Nk = keySize/4;
-    int Nr = get_num_rounds(keySize);
+    int Nr = AES_get_num_rounds(keySize);
 
     memcpy(expandedKey,key,keySize);
 
@@ -178,61 +188,71 @@ void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
 }
 
 /* ========== Encrypt ========== */
-void AES_encrypt(unsigned char input[16], unsigned char output[16],
-                 unsigned char *key, int keySize)
+void AES_encrypt_block(unsigned char input[16], unsigned char output[16],
+                       unsigned char *expandedKey, int Nr)
 {
     unsigned char state[16];
-    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
-    int Nr = get_num_rounds(keySize);
+    memcpy(state, input, 16);
 
-    memcpy(state,input,16);
-    KeyExpansion(key,expandedKey,keySize);
+    AddRoundKey(state, expandedKey);
 
-    AddRoundKey(state,expandedKey);
-
-    for(int round=1;round<Nr;round++)
+    for(int round=1; round<Nr; round++)
     {
         SubBytes(state);
         ShiftRows(state);
         MixColumns(state);
-        AddRoundKey(state,expandedKey+16*round);
+        AddRoundKey(state, expandedKey + 16*round);
     }
 
     SubBytes(state);
     ShiftRows(state);
-    AddRoundKey(state,expandedKey+16*Nr);
+    AddRoundKey(state, expandedKey + 16*Nr);
 
-    memcpy(output,state,16);
+    memcpy(output, state, 16);
+}
+
+void AES_encrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
+{
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    int Nr = AES_get_num_rounds(keySize);
+    KeyExpansion(key, expandedKey, keySize);
+    AES_encrypt_block(input, output, expandedKey, Nr);
 }
 
 /* ========== Decrypt (TỐI ƯU) ========== */
-void AES_decrypt(unsigned char input[16], unsigned char output[16],
-                 unsigned char *key, int keySize)
+void AES_decrypt_block(unsigned char input[16], unsigned char output[16],
+                       unsigned char *expandedKey, int Nr)
 {
     unsigned char state[16];
-    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
-    int Nr = get_num_rounds(keySize);
-
-    memcpy(state,input,16);
-    KeyExpansion(key,expandedKey,keySize);
+    memcpy(state, input, 16);
 
     unsigned char *rk = expandedKey + Nr*16;
 
-    AddRoundKey(state,rk);
+    AddRoundKey(state, rk);
     rk -= 16;
 
     for(int round=Nr-1; round>=1; round--)
     {
         InvShiftRows(state);
         InvSubBytes(state);
-        AddRoundKey(state,rk);
+        AddRoundKey(state, rk);
         InvMixColumns(state);
         rk -= 16;
     }
 
     InvShiftRows(state);
     InvSubBytes(state);
-    AddRoundKey(state,expandedKey);
+    AddRoundKey(state, expandedKey);
 
-    memcpy(output,state,16);
+    memcpy(output, state, 16);
+}
+
+void AES_decrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
+{
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    int Nr = AES_get_num_rounds(keySize);
+    KeyExpansion(key, expandedKey, keySize);
+    AES_decrypt_block(input, output, expandedKey, Nr);
 }

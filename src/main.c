@@ -99,21 +99,49 @@ static int encrypt_file(const char *inputFile, const char *outputFile,
         return -2;
     }
 
-    unsigned char buffer[16], encrypted[16];
-    int bytesRead;
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    KeyExpansion(key, expandedKey, keySize);
+    int Nr = AES_get_num_rounds(keySize);
 
-    while ((bytesRead = fread(buffer, 1, 16, fin)) > 0)
-    {
-        if (bytesRead < 16)
-        {
-            unsigned char pad = 16 - bytesRead;
-            for (int i = bytesRead; i < 16; i++)
-                buffer[i] = pad;
-        }
-        AES_encrypt(buffer, encrypted, key, keySize);
-        fwrite(encrypted, 1, 16, fout);
+    #define CHUNK_SIZE 65536
+    unsigned char *inBuffer = (unsigned char *)malloc(CHUNK_SIZE);
+    unsigned char *outBuffer = (unsigned char *)malloc(CHUNK_SIZE + 16);
+    
+    if (!inBuffer || !outBuffer) {
+        if(inBuffer) free(inBuffer);
+        if(outBuffer) free(outBuffer);
+        fclose(fin); fclose(fout);
+        return -3;
     }
 
+    int bytesRead;
+    while ((bytesRead = fread(inBuffer, 1, CHUNK_SIZE, fin)) > 0)
+    {
+        int blocks = bytesRead / 16;
+        int remainder = bytesRead % 16;
+        int outBytes = blocks * 16;
+        
+        for (int i = 0; i < blocks; i++) {
+            AES_encrypt_block(inBuffer + i * 16, outBuffer + i * 16, expandedKey, Nr);
+        }
+
+        if (remainder > 0)
+        {
+            unsigned char lastBlock[16];
+            memcpy(lastBlock, inBuffer + blocks * 16, remainder);
+            unsigned char pad = 16 - remainder;
+            for (int i = remainder; i < 16; i++)
+                lastBlock[i] = pad;
+                
+            AES_encrypt_block(lastBlock, outBuffer + blocks * 16, expandedKey, Nr);
+            outBytes += 16;
+        }
+
+        fwrite(outBuffer, 1, outBytes, fout);
+    }
+
+    free(inBuffer);
+    free(outBuffer);
     fclose(fin);
     fclose(fout);
     return 0;
@@ -132,19 +160,47 @@ static int decrypt_file(const char *inputFile, const char *outputFile,
         return -2;
     }
 
-    unsigned char buffer[16], decrypted[16], prev[16];
-    int first = 1;
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    KeyExpansion(key, expandedKey, keySize);
+    int Nr = AES_get_num_rounds(keySize);
 
-    while (fread(buffer, 1, 16, fin) == 16)
-    {
-        AES_decrypt(buffer, decrypted, key, keySize);
-        if (!first)
-            fwrite(prev, 1, 16, fout);
-        memcpy(prev, decrypted, 16);
-        first = 0;
+    #define CHUNK_SIZE 65536
+    unsigned char *inBuffer = (unsigned char *)malloc(CHUNK_SIZE);
+    unsigned char *outBuffer = (unsigned char *)malloc(CHUNK_SIZE);
+
+    if (!inBuffer || !outBuffer) {
+        if(inBuffer) free(inBuffer);
+        if(outBuffer) free(outBuffer);
+        fclose(fin); fclose(fout);
+        return -3;
     }
 
-    if (!first)
+    unsigned char prev[16];
+    int prev_valid = 0;
+    int bytesRead;
+
+    while ((bytesRead = fread(inBuffer, 1, CHUNK_SIZE, fin)) > 0)
+    {
+        int blocks = bytesRead / 16;
+        int outPos = 0;
+        
+        for (int i = 0; i < blocks; i++)
+        {
+            if (prev_valid) {
+                memcpy(outBuffer + outPos, prev, 16);
+                outPos += 16;
+            }
+            
+            AES_decrypt_block(inBuffer + i * 16, prev, expandedKey, Nr);
+            prev_valid = 1;
+        }
+
+        if (outPos > 0) {
+            fwrite(outBuffer, 1, outPos, fout);
+        }
+    }
+
+    if (prev_valid)
     {
         int pad = prev[15];
         if (pad >= 1 && pad <= 16)
@@ -153,6 +209,8 @@ static int decrypt_file(const char *inputFile, const char *outputFile,
             fwrite(prev, 1, 16, fout);
     }
 
+    free(inBuffer);
+    free(outBuffer);
     fclose(fin);
     fclose(fout);
     return 0;
