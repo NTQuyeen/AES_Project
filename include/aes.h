@@ -15,5 +15,7 @@ void ShiftRows(unsigned char state[16]);
 void MixColumns(unsigned char state[16]);
 void AddRoundKey(unsigned char state[16], unsigned char roundKey[16]);
 void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize);
+void RotWord(unsigned char *word);
+void SubWord(unsigned char *word);
 
 #endif
