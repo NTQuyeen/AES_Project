@@ -1,194 +1,104 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
 #include "aes.h"
 #include "aes_tables.h"
 
+/* ========== Helper ========== */
+int AES_get_num_rounds(int keySize)
+{
+    if (keySize == 24) return 12;
+    if (keySize == 32) return 14;
+    return 10;
+}
+
+/* ========== SubBytes ========== */
 void SubBytes(unsigned char state[16])
 {
-    for(int i = 0; i < 16; i++)
+    for(int i=0;i<16;i++)
         state[i] = sbox[state[i]];
 }
 
-void ShiftRows(unsigned char state[16])
-{
-    unsigned char temp;
-
-    temp = state[1];
-    state[1] = state[5];
-    state[5] = state[9];
-    state[9] = state[13];
-    state[13] = temp;
-
-    temp = state[2];
-    state[2] = state[10];
-    state[10] = temp;
-
-    temp = state[6];
-    state[6] = state[14];
-    state[14] = temp;
-
-    temp = state[3];
-    state[3] = state[15];
-    state[15] = state[11];
-    state[11] = state[7];
-    state[7] = temp;
-}
-
-unsigned char xtime(unsigned char x)
-{
-    return (x<<1) ^ ((x>>7) * 0x1b);
-}
-
-void MixColumns(unsigned char state[16])
-{
-    unsigned char t, tmp, tm;
-
-    for(int i=0;i<4;i++)
-    {
-        int col = i*4;
-
-        t = state[col];
-        tmp = state[col] ^ state[col+1] ^ state[col+2] ^ state[col+3];
-
-        tm = state[col] ^ state[col+1];
-        tm = xtime(tm);
-        state[col] ^= tm ^ tmp;
-
-        tm = state[col+1] ^ state[col+2];
-        tm = xtime(tm);
-        state[col+1] ^= tm ^ tmp;
-
-        tm = state[col+2] ^ state[col+3];
-        tm = xtime(tm);
-        state[col+2] ^= tm ^ tmp;
-
-        tm = state[col+3] ^ t;
-        tm = xtime(tm);
-        state[col+3] ^= tm ^ tmp;
-    }
-}
-
-void AddRoundKey(unsigned char state[16], unsigned char roundKey[16])
-{
-    for(int i = 0; i < 16; i++)
-        state[i] ^= roundKey[i];
-}
-
-void RotWord(unsigned char *word)
-{
-    unsigned char temp = word[0];
-    word[0] = word[1];
-    word[1] = word[2];
-    word[2] = word[3];
-    word[3] = temp;
-}
-
-void SubWord(unsigned char *word)
-{
-    for(int i = 0; i < 4; i++)
-        word[i] = sbox[word[i]];
-}
-
-void KeyExpansion(unsigned char key[16], unsigned char expandedKey[176])
-{
-    for(int i = 0; i < 16; i++)
-        expandedKey[i] = key[i];
-
-    int bytesGenerated = 16;
-    int rconIteration = 1;
-    unsigned char temp[4];
-
-    while(bytesGenerated < 176)
-    {
-        for(int i = 0; i < 4; i++)
-            temp[i] = expandedKey[bytesGenerated - 4 + i];
-
-        if(bytesGenerated % 16 == 0)
-        {
-            RotWord(temp);
-            SubWord(temp);
-            temp[0] ^= Rcon[rconIteration++];
-        }
-
-        for(int i = 0; i < 4; i++)
-        {
-            expandedKey[bytesGenerated] =
-                expandedKey[bytesGenerated - 16] ^ temp[i];
-            bytesGenerated++;
-        }
-    }
-}
-
-void AES_encrypt(unsigned char input[16], unsigned char output[16], unsigned char key[16])
-{
-    unsigned char state[16];
-    unsigned char expandedKey[176];
-
-    for(int i = 0; i < 16; i++)
-        state[i] = input[i];
-
-    KeyExpansion(key, expandedKey);
-
-    AddRoundKey(state, expandedKey);
-
-    for(int round = 1; round <= 9; round++)
-    {
-        SubBytes(state);
-        ShiftRows(state);
-        MixColumns(state);
-        AddRoundKey(state, expandedKey + (16 * round));
-    }
-
-    SubBytes(state);
-    ShiftRows(state);
-    AddRoundKey(state, expandedKey + 160);
-
-    for(int i = 0; i < 16; i++)
-        output[i] = state[i];
-}
-
+/* ========== InvSubBytes ========== */
 void InvSubBytes(unsigned char state[16])
 {
     for(int i=0;i<16;i++)
         state[i] = inv_sbox[state[i]];
 }
 
-void InvShiftRows(unsigned char state[16])
+/* ========== ShiftRows ========== */
+void ShiftRows(unsigned char state[16])
 {
-    unsigned char temp;
+    unsigned char t;
 
-    temp = state[13];
-    state[13] = state[9];
-    state[9] = state[5];
-    state[5] = state[1];
-    state[1] = temp;
-
-    temp = state[2];
-    state[2] = state[10];
-    state[10] = temp;
-
-    temp = state[6];
-    state[6] = state[14];
-    state[14] = temp;
-
-    temp = state[3];
-    state[3] = state[7];
-    state[7] = state[11];
-    state[11] = state[15];
-    state[15] = temp;
+    t=state[1]; state[1]=state[5]; state[5]=state[9]; state[9]=state[13]; state[13]=t;
+    t=state[2]; state[2]=state[10]; state[10]=t;
+    t=state[6]; state[6]=state[14]; state[14]=t;
+    t=state[3]; state[3]=state[15]; state[15]=state[11]; state[11]=state[7]; state[7]=t;
 }
 
+/* ========== InvShiftRows ========== */
+void InvShiftRows(unsigned char state[16])
+{
+    unsigned char t;
+
+    t=state[13]; state[13]=state[9]; state[9]=state[5]; state[5]=state[1]; state[1]=t;
+    t=state[2]; state[2]=state[10]; state[10]=t;
+    t=state[6]; state[6]=state[14]; state[14]=t;
+    t=state[3]; state[3]=state[7]; state[7]=state[11]; state[11]=state[15]; state[15]=t;
+}
+
+/* ========== xtime ========== */
+unsigned char xtime(unsigned char x)
+{
+    return (x<<1) ^ ((x>>7) * 0x1b);
+}
+
+/* ========== AddRoundKey (tối ưu 32-bit) ========== */
+void AddRoundKey(unsigned char *state, unsigned char *rk)
+{
+    uint32_t *s = (uint32_t*)state;
+    uint32_t *k = (uint32_t*)rk;
+
+    s[0]^=k[0];
+    s[1]^=k[1];
+    s[2]^=k[2];
+    s[3]^=k[3];
+}
+
+/* ========== MixColumns ========== */
+void MixColumns(unsigned char state[16])
+{
+    for(int i=0;i<4;i++)
+    {
+        int col=i*4;
+
+        unsigned char a=state[col];
+        unsigned char b=state[col+1];
+        unsigned char c=state[col+2];
+        unsigned char d=state[col+3];
+
+        unsigned char t = a ^ b ^ c ^ d;
+
+        state[col]   ^= xtime(a ^ b) ^ t;
+        state[col+1] ^= xtime(b ^ c) ^ t;
+        state[col+2] ^= xtime(c ^ d) ^ t;
+        state[col+3] ^= xtime(d ^ a) ^ t;
+    }
+}
+
+/* ========== GMUL (OPTIMIZED – KHÔNG IF) ========== */
 unsigned char gmul(unsigned char a, unsigned char b)
 {
     unsigned char p = 0;
 
-    for(int i=0;i<8;i++)
+    while (b)
     {
-        if(b & 1) p ^= a;
+        p ^= a & -(b & 1);
 
         unsigned char hi = a & 0x80;
         a <<= 1;
-
-        if(hi) a ^= 0x1b;
+        a ^= (0x1b & -(hi >> 7));
 
         b >>= 1;
     }
@@ -196,69 +106,153 @@ unsigned char gmul(unsigned char a, unsigned char b)
     return p;
 }
 
+/* ========== InvMixColumns (SIÊU TỐI ƯU) ========== */
 void InvMixColumns(unsigned char state[16])
 {
-    unsigned char temp[16];
-
     for(int i=0;i<4;i++)
     {
-        int col = i*4;
+        int col=i*4;
 
-        temp[col+0] =
-            gmul(state[col+0],14) ^
-            gmul(state[col+1],11) ^
-            gmul(state[col+2],13) ^
-            gmul(state[col+3],9);
+        unsigned char a = state[col];
+        unsigned char b = state[col+1];
+        unsigned char c = state[col+2];
+        unsigned char d = state[col+3];
 
-        temp[col+1] =
-            gmul(state[col+0],9) ^
-            gmul(state[col+1],14) ^
-            gmul(state[col+2],11) ^
-            gmul(state[col+3],13);
+        unsigned char u = xtime(xtime(a ^ c));
+        unsigned char v = xtime(xtime(b ^ d));
 
-        temp[col+2] =
-            gmul(state[col+0],13) ^
-            gmul(state[col+1],9) ^
-            gmul(state[col+2],14) ^
-            gmul(state[col+3],11);
+        a ^= u;
+        b ^= v;
+        c ^= u;
+        d ^= v;
 
-        temp[col+3] =
-            gmul(state[col+0],11) ^
-            gmul(state[col+1],13) ^
-            gmul(state[col+2],9) ^
-            gmul(state[col+3],14);
+        unsigned char t = a ^ b ^ c ^ d;
+
+        state[col]   = a ^ t ^ xtime(a ^ b);
+        state[col+1] = b ^ t ^ xtime(b ^ c);
+        state[col+2] = c ^ t ^ xtime(c ^ d);
+        state[col+3] = d ^ t ^ xtime(d ^ a);
     }
-
-    for(int i=0;i<16;i++)
-        state[i] = temp[i];
 }
 
-void AES_decrypt(unsigned char input[16],
-                 unsigned char output[16],
-                 unsigned char key[16])
+/* ========== RotWord ========== */
+void RotWord(unsigned char *word)
+{
+    unsigned char t=word[0];
+    word[0]=word[1]; word[1]=word[2];
+    word[2]=word[3]; word[3]=t;
+}
+
+/* ========== SubWord ========== */
+void SubWord(unsigned char *word)
+{
+    for(int i=0;i<4;i++)
+        word[i]=sbox[word[i]];
+}
+
+/* ========== KeyExpansion ========== */
+void KeyExpansion(unsigned char *key, unsigned char *expandedKey, int keySize)
+{
+    int Nk = keySize/4;
+    int Nr = AES_get_num_rounds(keySize);
+
+    memcpy(expandedKey,key,keySize);
+
+    int bytesGenerated=keySize;
+    int rconIteration=1;
+    unsigned char temp[4];
+
+    while(bytesGenerated < 16*(Nr+1))
+    {
+        for(int i=0;i<4;i++)
+            temp[i]=expandedKey[bytesGenerated-4+i];
+
+        if(bytesGenerated % keySize == 0)
+        {
+            RotWord(temp);
+            SubWord(temp);
+            temp[0]^=Rcon[rconIteration++];
+        }
+        else if(Nk==8 && (bytesGenerated % keySize)==16)
+        {
+            SubWord(temp);
+        }
+
+        for(int i=0;i<4;i++)
+        {
+            expandedKey[bytesGenerated] =
+                expandedKey[bytesGenerated-keySize]^temp[i];
+            bytesGenerated++;
+        }
+    }
+}
+
+/* ========== Encrypt ========== */
+void AES_encrypt_block(unsigned char input[16], unsigned char output[16],
+                       unsigned char *expandedKey, int Nr)
 {
     unsigned char state[16];
-    unsigned char expandedKey[176];
+    memcpy(state, input, 16);
 
-    for(int i=0;i<16;i++)
-        state[i] = input[i];
+    AddRoundKey(state, expandedKey);
 
-    KeyExpansion(key, expandedKey);
+    for(int round=1; round<Nr; round++)
+    {
+        SubBytes(state);
+        ShiftRows(state);
+        MixColumns(state);
+        AddRoundKey(state, expandedKey + 16*round);
+    }
 
-    AddRoundKey(state, expandedKey + 160);
+    SubBytes(state);
+    ShiftRows(state);
+    AddRoundKey(state, expandedKey + 16*Nr);
 
-    for(int round=9; round>=1; round--)
+    memcpy(output, state, 16);
+}
+
+void AES_encrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
+{
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    int Nr = AES_get_num_rounds(keySize);
+    KeyExpansion(key, expandedKey, keySize);
+    AES_encrypt_block(input, output, expandedKey, Nr);
+}
+
+/* ========== Decrypt (TỐI ƯU) ========== */
+void AES_decrypt_block(unsigned char input[16], unsigned char output[16],
+                       unsigned char *expandedKey, int Nr)
+{
+    unsigned char state[16];
+    memcpy(state, input, 16);
+
+    unsigned char *rk = expandedKey + Nr*16;
+
+    AddRoundKey(state, rk);
+    rk -= 16;
+
+    for(int round=Nr-1; round>=1; round--)
     {
         InvShiftRows(state);
         InvSubBytes(state);
-        AddRoundKey(state, expandedKey + round*16);
+        AddRoundKey(state, rk);
         InvMixColumns(state);
+        rk -= 16;
     }
 
     InvShiftRows(state);
     InvSubBytes(state);
     AddRoundKey(state, expandedKey);
 
-    for(int i=0;i<16;i++)
-        output[i] = state[i];
+    memcpy(output, state, 16);
+}
+
+void AES_decrypt(unsigned char input[16], unsigned char output[16],
+                 unsigned char *key, int keySize)
+{
+    unsigned char expandedKey[AES_MAX_EXPANDED_KEY];
+    int Nr = AES_get_num_rounds(keySize);
+    KeyExpansion(key, expandedKey, keySize);
+    AES_decrypt_block(input, output, expandedKey, Nr);
 }
